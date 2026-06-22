@@ -1,0 +1,10 @@
+Run shell commands. Chain sequential steps with &&, not separate calls.
+
+CRITICAL:
+- NEVER use cd — use the workdir parameter
+- NEVER git commit --amend without explicit user request
+- NEVER skip hooks unless user requests it
+- NEVER push to remote unless user requests it
+- NEVER force push to main/master — warn the user
+- git add specific files, never git add -A
+- Paths with spaces must be quoted

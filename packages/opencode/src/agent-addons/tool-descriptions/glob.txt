@@ -1,0 +1,5 @@
+Fast file pattern matching. Returns file paths sorted by modification time.
+
+PARAMETERS: { pattern (glob, e.g. "src/**/*.ts"), path? (dir) }
+
+Use to find files by name pattern. Batch with other independent tool calls (grep, read) when possible. For open-ended searches needing multiple rounds, use Task.

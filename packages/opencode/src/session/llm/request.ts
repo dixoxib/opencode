@@ -119,7 +119,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
         : undefined,
       topP: input.agent.topP ?? ProviderTransform.topP(input.model),
       topK: ProviderTransform.topK(input.model),
-      maxOutputTokens: ProviderTransform.maxOutputTokens(input.model, input.flags.outputTokenMax),
+      maxOutputTokens: ProviderTransform.maxOutputTokens(input.model, input.flags.maxOutputTokens || input.flags.outputTokenMax),
       options,
     },
   )

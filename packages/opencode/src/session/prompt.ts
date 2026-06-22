@@ -5,6 +5,7 @@ import os from "os"
 import { SessionID, MessageID, PartID } from "./schema"
 import { MessageV2 } from "./message-v2"
 import { Log } from "@opencode-ai/core/util/log"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import { SessionRevert } from "./revert"
 import { Session } from "./session"
 import { Agent } from "../agent/agent"
@@ -12,6 +13,7 @@ import { Provider } from "@/provider/provider"
 
 import { type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
+import { Token } from "@/util/token"
 import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
 import { Instruction } from "./instruction"
@@ -1248,6 +1250,7 @@ export const layer = Layer.effect(
         const slog = elog.with({ sessionID })
         let structured: unknown
         let step = 0
+        let stepSinceSeam = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         while (true) {
@@ -1310,24 +1313,38 @@ export const layer = Layer.effect(
             continue
           }
 
-          if (task?.type === "compaction") {
+          if (task?.type === "compaction" || task?.type === "seam") {
+            const agentName = lastUser.agent || "compaction"
+            const compactionAgent = yield* agents.get(agentName)
+            if (!compactionAgent) {
+              log.warn("compaction agent not found, skipping compaction", { agent: agentName })
+              continue
+            }
+            const [skills, env, instructions] = yield* Effect.all([
+              sys.skills(compactionAgent),
+              sys.environment(model),
+              instruction.system().pipe(Effect.orDie),
+            ])
+            const system = [...env, ...instructions, ...(skills ? [skills] : [])]
             const result = yield* compaction.process({
               messages: msgs,
               parentID: lastUser.id,
               sessionID,
               auto: task.auto,
               overflow: task.overflow,
+              system,
             })
             if (result === "stop") break
             continue
           }
 
-          if (
-            lastFinished &&
-            lastFinished.summary !== true &&
-            (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
+           if (
+             lastFinished &&
+             lastFinished.summary !== true &&
+             lastFinished.mode !== "seam" &&
+             (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
           ) {
-            yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
+            yield* compaction.create({ sessionID, agent: "compaction", model: lastUser.model, auto: true })
             continue
           }
 
@@ -1402,7 +1419,6 @@ export const layer = Layer.effect(
               Effect.provideService(MCP.Service, mcp),
               Effect.provideService(Truncate.Service, truncate),
             )
-
             if (lastUser.format?.type === "json_schema") {
               tools["StructuredOutput"] = createStructuredOutputTool({
                 schema: lastUser.format.schema,
@@ -1456,6 +1472,7 @@ export const layer = Layer.effect(
               model,
               toolChoice: format.type === "json_schema" ? "required" : undefined,
             })
+            yield* sessions.touch(sessionID)
 
             if (structured !== undefined) {
               handle.message.structured = structured
@@ -1477,10 +1494,42 @@ export const layer = Layer.effect(
             }
 
             if (result === "stop") return "break" as const
+            if (finished) {
+            const cfg = yield* config.get()
+            const seamCfg = cfg.seam
+            if (seamCfg?.enabled !== false && process.env["OPENCODE_ENABLE_SEAM"] !== "false") {
+              stepSinceSeam++
+              const iv = seamCfg?.interval ?? 1
+              if (stepSinceSeam % iv === 0) {
+                const limit = Number(Flag.OPENCODE_SEAM_BLOCK_SIZE) || (seamCfg?.block_size ?? 200_000)
+                let bpe = 0
+                for (let i = msgs.length - 1; i >= 0; i--) {
+                  const m = msgs[i]
+                  if (m.info.role === "assistant" && (m.info.summary || m.info.mode === "seam")) break
+                  for (const p of (m as any).parts || []) {
+                    if (p.text) bpe += Token.estimate(p.text)
+                    if (p.type === "tool") {
+                      if (p.state?.output) bpe += Token.estimate(String(p.state.output))
+                      if (p.state?.input) bpe += Token.estimate(JSON.stringify(p.state.input))
+                    }
+                  }
+                }
+                if (bpe >= limit) {
+                  stepSinceSeam = 0
+                  yield* compaction.create({
+                    sessionID,
+                    agent: "seam",
+                    model: lastUser.model,
+                    auto: true,
+                  })
+                }
+              }
+            }
+            }
             if (result === "compact") {
               yield* compaction.create({
                 sessionID,
-                agent: lastUser.agent,
+                agent: "compaction",
                 model: lastUser.model,
                 auto: true,
                 overflow: !handle.message.finish,
@@ -1496,6 +1545,7 @@ export const layer = Layer.effect(
         }
 
         yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
+        yield* compaction.pruneSeam({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
         return yield* lastAssistant(sessionID)
       },
     )

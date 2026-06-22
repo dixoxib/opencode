@@ -9,7 +9,7 @@ import { Auth } from "../auth"
 import { ProviderTransform } from "@/provider/transform"
 
 import PROMPT_GENERATE from "./generate.txt"
-import PROMPT_COMPACTION from "./prompt/compaction.txt"
+
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
@@ -204,12 +204,21 @@ export const layer = Layer.effect(
             mode: "primary",
             native: true,
             hidden: true,
-            prompt: PROMPT_COMPACTION,
             permission: Permission.merge(
               defaults,
-              Permission.fromConfig({
-                "*": "deny",
-              }),
+              Permission.fromConfig({ question: "allow", plan_enter: "allow" }),
+              user,
+            ),
+            options: {},
+          },
+          seam: {
+            name: "seam",
+            mode: "primary",
+            native: true,
+            hidden: true,
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({ question: "allow", plan_enter: "allow" }),
               user,
             ),
             options: {},

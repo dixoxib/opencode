@@ -51,6 +51,10 @@ import { Reference } from "@/reference/reference"
 import { BackgroundJob } from "@/background/job"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@opencode-ai/core/provider"
+import { gated, dsdesc } from "@/agent-addons/tool-registry-extension"
+import { BatchTool } from "./batch"
+import { MultiEditTool } from "./multiedit"
+import { LsTool } from "./ls"
 
 const log = Log.create({ service: "tool.registry" })
 
@@ -132,6 +136,7 @@ export const layer: Layer.Layer<
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
     const agent = yield* Agent.Service
+    const addonTools = gated ? yield* Effect.all({ batch: BatchTool, multiedit: MultiEditTool, ls: LsTool }) : undefined
 
     const state = yield* InstanceState.make<State>(
       Effect.fn("ToolRegistry.state")(function* (ctx) {
@@ -240,6 +245,14 @@ export const layer: Layer.Layer<
           plan: Tool.init(plan),
         })
 
+        const additions = addonTools
+          ? yield* Effect.all({
+              batch: Tool.init(addonTools.batch),
+              multiedit: Tool.init(addonTools.multiedit),
+              ls: Tool.init(addonTools.ls),
+            })
+          : undefined
+
         return {
           custom,
           builtin: [
@@ -259,6 +272,7 @@ export const layer: Layer.Layer<
             tool.patch,
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
+            ...(additions ? [additions.batch, additions.multiedit, additions.ls] : []),
           ],
           task: tool.task,
           read: tool.read,
@@ -327,8 +341,9 @@ export const layer: Layer.Layer<
         filtered,
         Effect.fnUntraced(function* (tool: Tool.Def) {
           using _ = log.time(tool.id)
+          const initial = dsdesc(tool.id, tool.description, input.modelID)
           const output = {
-            description: tool.description,
+            description: initial,
             parameters: tool.parameters,
             jsonSchema: tool.jsonSchema,
           }

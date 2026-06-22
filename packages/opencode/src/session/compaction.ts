@@ -5,6 +5,9 @@ import { SessionID, MessageID, PartID } from "./schema"
 import { Provider } from "@/provider/provider"
 import { MessageV2 } from "./message-v2"
 import { Token } from "@/util/token"
+import { ToolRegistry } from "@/tool/registry"
+import { tool, jsonSchema } from "ai"
+import { ToolJsonSchema } from "@/tool/json-schema"
 import { Log } from "@opencode-ai/core/util/log"
 import { SessionProcessor } from "./processor"
 import { Agent } from "@/agent/agent"
@@ -13,11 +16,13 @@ import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
 
 import { Effect, Layer, Context, Schema } from "effect"
+import type { Tool } from "ai"
 import * as DateTime from "effect/DateTime"
 import { InstanceState } from "@/effect/instance-state"
 import { isOverflow as overflow, usable } from "./overflow"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { SessionEvent } from "@opencode-ai/core/session/event"
 import { ProviderV2 } from "@opencode-ai/core/provider"
@@ -36,9 +41,54 @@ export const Event = {
 
 export const PRUNE_MINIMUM = 20_000
 export const PRUNE_PROTECT = 40_000
-const TOOL_OUTPUT_MAX_CHARS = 2_000
 const PRUNE_PROTECTED_TOOLS = ["skill"]
 const DEFAULT_TAIL_TURNS = 2
+
+function isMdPath(input: any): boolean {
+  if (!input) return false
+  const path = input.filePath || input.file_path || input.path || ""
+  return String(path).endsWith(".md")
+}
+
+function isMdOutput(part: SessionV1.ToolPart): boolean {
+  return isMdPath(part.state.input as any)
+}
+const COMPACTION_INSTRUCTIONS = `You are an anchored context summarization assistant for coding sessions.
+Summarize only the conversation history you are given. The newest turns may be kept verbatim outside your summary, so focus on the older context that still matters for continuing the work.
+If the prompt includes a <previous-summary> block, treat it as the current anchored summary. Update it with the new history by preserving still-true details, removing stale details, and merging in new facts.
+Always follow the exact output structure requested by the user prompt. Keep every section, preserve exact file paths and identifiers when known, and prefer terse bullets over paragraphs.
+Do not answer the conversation itself. Do not mention that you are summarizing, compacting, or merging context. Respond in the same language as the conversation.`
+
+const SEAM_INSTRUCTIONS = `You are summarizing a coding session to preserve context continuity. Write a detailed, structured summary as an invisible bridge between what came before and what follows.
+
+## Structure
+
+### Active Goal
+- [Current task. Be specific: what are we building, debugging, or exploring?]
+
+### Current State
+- [Completed deliverables, finished features.]
+- [In progress: file or module being edited.]
+
+### Key Decisions
+- [What was decided and WHY. What was rejected and why?]
+
+### Open Questions & Blockers
+- [Unresolved items. What needs input or external resolution?]
+
+### Critical Context
+- [File paths, function signatures, API endpoints, env vars, error messages, config values.]
+- [User-stated constraints and preferences.]
+
+### Next Steps
+- [Ordered next actions from the conversation.]
+
+## Rules
+- Be thorough. The summary bridges conversation segments — missing context breaks continuity.
+- Preserve exact file paths, identifiers, commands, and error strings.
+- Use bullets with sub-detail, not prose paragraphs.
+- Do not mention that you are summarizing, compacting, or creating a seam.
+- Respond in the same language as the conversation.`
 const MIN_PRESERVE_RECENT_TOKENS = 2_000
 const MAX_PRESERVE_RECENT_TOKENS = 8_000
 const SUMMARY_TEMPLATE = `Output exactly the Markdown structure shown inside <template> and keep the section order unchanged. Do not include the <template> tags in your response.
@@ -191,17 +241,20 @@ export interface Interface {
     model: Provider.Model
   }) => Effect.Effect<boolean>
   readonly prune: (input: { sessionID: SessionID }) => Effect.Effect<void>
+  readonly pruneSeam: (input: { sessionID: SessionID }) => Effect.Effect<void>
   readonly process: (input: {
     parentID: MessageID
     messages: SessionV1.WithParts[]
     sessionID: SessionID
     auto: boolean
     overflow?: boolean
+    system?: string[]
+    tools?: Record<string, Tool>
   }) => Effect.Effect<"continue" | "stop">
   readonly create: (input: {
     sessionID: SessionID
     agent: string
-    model: { providerID: ProviderV2.ID; modelID: ProviderV2.ModelID }
+    model: { providerID: ProviderV2.ID; modelID: ProviderV2.ModelID; variant?: string }
     auto: boolean
     overflow?: boolean
   }) => Effect.Effect<void>
@@ -222,6 +275,7 @@ export const layer = Layer.effect(
     const provider = yield* Provider.Service
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
+    const registry = yield* ToolRegistry.Service
 
     const isOverflow = Effect.fn("SessionCompaction.isOverflow")(function* (input: {
       tokens: SessionV1.Assistant["tokens"]
@@ -232,6 +286,7 @@ export const layer = Layer.effect(
         tokens: input.tokens,
         model: input.model,
         outputTokenMax: flags.outputTokenMax,
+        contextLimit: flags.contextLimit,
       })
     })
 
@@ -321,6 +376,7 @@ export const layer = Layer.effect(
           if (part.type !== "tool") continue
           if (part.state.status !== "completed") continue
           if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
+          if (isMdOutput(part)) continue
           if (part.state.time.compacted) break loop
           const estimate = Token.estimate(part.state.output)
           total += estimate
@@ -342,12 +398,80 @@ export const layer = Layer.effect(
       }
     })
 
+    const pruneSeam = Effect.fn("SessionCompaction.pruneSeam")(function* (input: { sessionID: SessionID }) {
+      const cfg = yield* config.get()
+      if (cfg.seam?.prune === false || process.env["OPENCODE_SEAM_PRUNE"] === "false") return
+      const margin = Number(Flag.OPENCODE_SEAM_PRUNE_MARGIN) || (cfg.seam?.prune_margin ?? 50_000)
+      log.info("seam-pruning", { margin })
+
+      const msgs = yield* session
+        .messages({ sessionID: input.sessionID })
+        .pipe(Effect.catchIf(NotFoundError.isInstance, () => Effect.succeed(undefined)))
+      if (!msgs) return
+
+      // Walk backward, accumulating token distance. Stop at the first seam beyond margin — prune everything older.
+      let tokens = 0
+      let pruneEnd = -1
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const msg = msgs[i]
+        if (msg.info.role === "assistant" && (msg.info as any).mode === "seam") {
+          if (tokens >= margin) { pruneEnd = i; break }
+        }
+        for (const part of msg.parts as any[]) {
+          if (part.text) tokens += Token.estimate(part.text)
+          if (part.type === "tool") {
+            if (part.state?.output) tokens += Token.estimate(String(part.state.output))
+            if (part.state?.input) tokens += Token.estimate(JSON.stringify(part.state.input))
+          }
+        }
+      }
+      if (pruneEnd < 0) return
+
+      // Run prune logic on messages up to pruneEnd
+      let pruned = 0
+      let total = 0
+      const toPrune: SessionV1.ToolPart[] = []
+      let turns = 0
+
+      loop: for (let msgIndex = pruneEnd; msgIndex >= 0; msgIndex--) {
+        const msg = msgs[msgIndex]
+        if (msg.info.role === "user") turns++
+        if (turns > 2) {
+          for (const part of msg.parts) {
+            if (part.type !== "tool") continue
+            if (part.state.status !== "completed") continue
+            if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
+          if (isMdOutput(part)) continue
+            if (part.state.time.compacted) break loop
+            const estimate = Token.estimate(part.state.output)
+            total += estimate
+            if (total <= PRUNE_PROTECT) continue
+            pruned += estimate
+            toPrune.push(part)
+          }
+        }
+      }
+
+      log.info("seam-prune found", { pruned, total })
+      if (pruned > PRUNE_MINIMUM) {
+        for (const part of toPrune) {
+          if (part.state.status === "completed") {
+            part.state.time.compacted = Date.now()
+            yield* session.updatePart(part)
+          }
+        }
+        log.info("seam-pruned", { count: toPrune.length })
+      }
+    })
+
     const processCompaction = Effect.fn("SessionCompaction.process")(function* (input: {
       parentID: MessageID
       messages: SessionV1.WithParts[]
       sessionID: SessionID
       auto: boolean
       overflow?: boolean
+      system?: string[]
+      tools?: Record<string, Tool>
     }) {
       const parent = input.messages.findLast((m) => m.info.id === input.parentID)
       if (!parent || parent.info.role !== "user") {
@@ -381,43 +505,46 @@ export const layer = Layer.effect(
         }
       }
 
-      const agent = yield* agents.get("compaction")
+      const agent = yield* agents.get(userMessage.agent || "compaction")
       const model = agent.model
         ? yield* provider.getModel(agent.model.providerID, agent.model.modelID).pipe(Effect.orDie)
         : yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie)
+      const isSeam = userMessage.agent === "seam"
       const cfg = yield* config.get()
       const history = compactionPart && messages.at(-1)?.info.id === input.parentID ? messages.slice(0, -1) : messages
       const prior = completedCompactions(history)
       const hidden = new Set(prior.flatMap((item) => [item.userIndex, item.assistantIndex]))
       const previousSummary = prior.at(-1)?.summary
-      const selected = yield* select({
-        messages: history.filter((_, index) => !hidden.has(index)),
-        cfg,
-        model,
-      })
+      const selected = isSeam
+        ? { head: history.filter((_, i) => !hidden.has(i)), tail_start_id: undefined as any }
+        : yield* select({
+            messages: history.filter((_, index) => !hidden.has(index)),
+            cfg,
+            model,
+          })
       // Allow plugins to inject context or replace compaction prompt.
       const compacting = yield* plugin.trigger(
         "experimental.session.compacting",
         { sessionID: input.sessionID },
         { context: [], prompt: undefined },
       )
-      const nextPrompt = compacting.prompt ?? buildPrompt({ previousSummary, context: compacting.context })
+      const instructions = isSeam ? SEAM_INSTRUCTIONS : COMPACTION_INSTRUCTIONS
+      const nextPrompt = isSeam
+        ? instructions + (previousSummary ? "\n\n<previous-summary>\n" + previousSummary + "\n</previous-summary>" : "")
+        : instructions + "\n\n" + (compacting.prompt ?? buildPrompt({ previousSummary, context: compacting.context }))
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
-      const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
-        stripMedia: true,
-        toolOutputMaxChars: TOOL_OUTPUT_MAX_CHARS,
-      })
+      const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model)
       const ctx = yield* InstanceState.context
       const msg: SessionV1.Assistant = {
         id: MessageID.ascending(),
         role: "assistant",
         parentID: input.parentID,
         sessionID: input.sessionID,
-        mode: "compaction",
-        agent: "compaction",
+        mode: isSeam ? "seam" : "compaction",
+        agent: userMessage.agent || "compaction",
         variant: userMessage.model.variant,
-        summary: true,
+        summary: isSeam ? false : true,
         path: {
           cwd: ctx.directory,
           root: ctx.worktree,
@@ -441,12 +568,23 @@ export const layer = Layer.effect(
         sessionID: input.sessionID,
         model,
       })
+      const buildAgent = yield* agents.get("build")
+      const resolved = yield* registry.tools({ providerID: model.providerID, modelID: model.id, agent: buildAgent ?? agent })
+      const tools: Record<string, any> = {}
+      for (const item of resolved) {
+        const s = ToolJsonSchema.fromTool(item)
+        tools[item.id] = tool({
+          description: item.description,
+          inputSchema: jsonSchema(s),
+          execute: async () => ({ output: "", title: "", metadata: {} }),
+        })
+      }
       const result = yield* processor.process({
         user: userMessage,
         agent,
         sessionID: input.sessionID,
-        tools: {},
-        system: [],
+        tools,
+        system: input.system ?? [],
         messages: [
           ...modelMessages,
           {
@@ -475,7 +613,7 @@ export const layer = Layer.effect(
         })
       }
 
-      if (result === "continue" && input.auto) {
+      if (!isSeam && result === "continue" && input.auto) {
         if (replay) {
           const original = replay.info
           const replayMsg = yield* session.updateMessage({
@@ -560,6 +698,7 @@ export const layer = Layer.effect(
       }
 
       if (processor.message.error) return "stop"
+      if (isSeam) return "stop"
       if (result === "continue") {
         const summary = summaryText(
           (yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).find(
@@ -585,7 +724,7 @@ export const layer = Layer.effect(
     const create = Effect.fn("SessionCompaction.create")(function* (input: {
       sessionID: SessionID
       agent: string
-      model: { providerID: ProviderV2.ID; modelID: ProviderV2.ModelID }
+      model: { providerID: ProviderV2.ID; modelID: ProviderV2.ModelID; variant?: string }
       auto: boolean
       overflow?: boolean
     }) {
@@ -593,6 +732,7 @@ export const layer = Layer.effect(
         id: MessageID.ascending(),
         role: "user",
         model: input.model,
+        variant: input.model.variant,
         sessionID: input.sessionID,
         agent: input.agent,
         time: { created: Date.now() },
@@ -601,7 +741,7 @@ export const layer = Layer.effect(
         id: PartID.ascending(),
         messageID: msg.id,
         sessionID: msg.sessionID,
-        type: "compaction",
+        type: input.agent === "seam" ? "seam" : "compaction",
         auto: input.auto,
         overflow: input.overflow,
       })
@@ -609,7 +749,7 @@ export const layer = Layer.effect(
         yield* events.publish(SessionEvent.Compaction.Started, {
           sessionID: input.sessionID,
           timestamp: DateTime.makeUnsafe(Date.now()),
-          reason: input.auto ? "auto" : "manual",
+          reason: input.agent === "seam" ? "seam" : input.auto ? "auto" : "manual",
         })
       }
     })
@@ -617,6 +757,7 @@ export const layer = Layer.effect(
     return Service.of({
       isOverflow,
       prune,
+      pruneSeam,
       process: processCompaction,
       create,
     })
@@ -633,6 +774,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(Config.defaultLayer),
     Layer.provide(RuntimeFlags.defaultLayer),
     Layer.provide(EventV2Bridge.defaultLayer),
+    Layer.provide(ToolRegistry.defaultLayer),
   ),
 )
 

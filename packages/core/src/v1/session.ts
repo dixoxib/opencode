@@ -182,7 +182,7 @@ export type AgentPart = Types.DeepMutable<Schema.Schema.Type<typeof AgentPart>>
 
 export const CompactionPart = Schema.Struct({
   ...partBase,
-  type: Schema.Literal("compaction"),
+  type: Schema.Literals(["compaction", "seam"]),
   auto: Schema.Boolean,
   overflow: Schema.optional(Schema.Boolean),
   tail_start_id: Schema.optional(MessageID),
@@ -512,6 +512,7 @@ const SessionTokens = Schema.Struct({
   input: Schema.Finite,
   output: Schema.Finite,
   reasoning: Schema.Finite,
+  since_seam: Schema.optional(Schema.Finite).annotate({ default: 0 }),
   cache: Schema.Struct({
     read: Schema.Finite,
     write: Schema.Finite,

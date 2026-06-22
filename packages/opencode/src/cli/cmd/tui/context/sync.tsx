@@ -540,7 +540,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const task = (async () => {
             const [session, messages, todo, diff] = await Promise.all([
               sdk.client.session.get({ sessionID }, { throwOnError: true }),
-              sdk.client.session.messages({ sessionID, limit: 100 }),
+              sdk.client.session.messages({ sessionID, limit: 1000 }),
               sdk.client.session.todo({ sessionID }),
               sdk.client.session.diff({ sessionID }),
             ])
@@ -561,8 +561,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                     (message) => tracker.messages.has(message.id) && !infos.some((item) => item.id === message.id),
                   ),
                 )
-                const removed = infos.slice(0, -100)
-                const visible = infos.slice(-100)
+                const removed = infos.slice(0, -1000)
+                const visible = infos.slice(-1000)
                 const visibleIDs = new Set(visible.map((message) => message.id))
                 for (const message of messages.data ?? []) {
                   if (!visibleIDs.has(message.info.id)) {

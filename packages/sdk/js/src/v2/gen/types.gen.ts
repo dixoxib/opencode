@@ -72,10 +72,10 @@ export type Event =
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
+  | EventTodoUpdated
   | EventSessionStatus
   | EventSessionIdle
   | EventSessionCompacted
-  | EventTodoUpdated
   | EventVcsBranchUpdated
   | EventWorktreeReady
   | EventWorktreeFailed
@@ -170,6 +170,7 @@ export type Session = {
     input: number
     output: number
     reasoning: number
+    since_seam?: number
     cache: {
       read: number
       write: number
@@ -594,7 +595,7 @@ export type CompactionPart = {
   id: string
   sessionID: string
   messageID: string
-  type: "compaction"
+  type: "compaction" | "seam"
   auto: boolean
   overflow?: boolean
   tail_start_id?: string
@@ -666,6 +667,21 @@ export type QuestionTool = {
 
 export type QuestionAnswer = Array<string>
 
+export type Todo = {
+  /**
+   * Brief description of the task
+   */
+  content: string
+  /**
+   * Current status of the task: pending, in_progress, completed, cancelled
+   */
+  status: string
+  /**
+   * Priority level of the task: high, medium, low
+   */
+  priority: string
+}
+
 export type SessionStatus =
   | {
       type: "idle"
@@ -687,21 +703,6 @@ export type SessionStatus =
   | {
       type: "busy"
     }
-
-export type Todo = {
-  /**
-   * Brief description of the task
-   */
-  content: string
-  /**
-   * Current status of the task: pending, in_progress, completed, cancelled
-   */
-  status: string
-  /**
-   * Priority level of the task: high, medium, low
-   */
-  priority: string
-}
 
 export type GlobalEvent = {
   directory: string
@@ -1059,7 +1060,7 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
-          reason: "auto" | "manual"
+          reason: "auto" | "manual" | "seam"
         }
       }
     | {
@@ -1271,6 +1272,7 @@ export type GlobalEvent = {
             | "session.share"
             | "session.interrupt"
             | "session.compact"
+            | "session.seam"
             | "session.page.up"
             | "session.page.down"
             | "session.line.up"
@@ -1396,6 +1398,14 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "todo.updated"
+        properties: {
+          sessionID: string
+          todos: Array<Todo>
+        }
+      }
+    | {
+        id: string
         type: "session.status"
         properties: {
           sessionID: string
@@ -1414,14 +1424,6 @@ export type GlobalEvent = {
         type: "session.compacted"
         properties: {
           sessionID: string
-        }
-      }
-    | {
-        id: string
-        type: "todo.updated"
-        properties: {
-          sessionID: string
-          todos: Array<Todo>
         }
       }
     | {
@@ -1906,6 +1908,13 @@ export type Config = {
     preserve_recent_tokens?: number
     reserved?: number
   }
+  seam?: {
+    enabled?: boolean
+    block_size?: number
+    interval?: number
+    prune?: boolean
+    prune_margin?: number
+  }
   experimental?: {
     disable_paste_summary?: boolean
     batch_tool?: boolean
@@ -2095,6 +2104,7 @@ export type GlobalSession = {
     input: number
     output: number
     reasoning: number
+    since_seam?: number
     cache: {
       read: number
       write: number
@@ -2564,6 +2574,7 @@ export type EventTuiCommandExecute = {
       | "session.share"
       | "session.interrupt"
       | "session.compact"
+      | "session.seam"
       | "session.page.up"
       | "session.page.down"
       | "session.line.up"
@@ -2646,6 +2657,7 @@ export type EventTuiCommandExecute2 = {
       | "session.share"
       | "session.interrupt"
       | "session.compact"
+      | "session.seam"
       | "session.page.up"
       | "session.page.down"
       | "session.line.up"
@@ -3335,7 +3347,7 @@ export type SyncEventSessionNextCompactionStarted = {
   data: {
     timestamp: number
     sessionID: string
-    reason: "auto" | "manual"
+    reason: "auto" | "manual" | "seam"
   }
 }
 
@@ -3599,7 +3611,7 @@ export type SessionMessageAssistant = {
 
 export type SessionMessageCompaction = {
   type: "compaction"
-  reason: "auto" | "manual"
+  reason: "auto" | "manual" | "seam"
   summary: string
   include?: string
   id: string
@@ -4208,7 +4220,7 @@ export type EventSessionNextCompactionStarted = {
   properties: {
     timestamp: number
     sessionID: string
-    reason: "auto" | "manual"
+    reason: "auto" | "manual" | "seam"
   }
 }
 
@@ -4522,6 +4534,15 @@ export type EventQuestionRejected = {
   }
 }
 
+export type EventTodoUpdated = {
+  id: string
+  type: "todo.updated"
+  properties: {
+    sessionID: string
+    todos: Array<Todo>
+  }
+}
+
 export type EventSessionStatus = {
   id: string
   type: "session.status"
@@ -4544,15 +4565,6 @@ export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
     sessionID: string
-  }
-}
-
-export type EventTodoUpdated = {
-  id: string
-  type: "todo.updated"
-  properties: {
-    sessionID: string
-    todos: Array<Todo>
   }
 }
 
@@ -7625,6 +7637,7 @@ export type SessionSummarizeData = {
     providerID: string
     modelID: string
     auto?: boolean
+    agent?: string
   }
   path: {
     sessionID: string

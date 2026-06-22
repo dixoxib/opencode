@@ -1,0 +1,52 @@
+Makes multiple edits across one or more files in a single operation. Prefer this tool over the Edit tool when you need to make multiple edits to the same file, or a batch of edits to different files that should run sequentially.
+
+Before using this tool:
+
+1. Use the Read tool to understand the file's contents and context
+2. Verify the directory path is correct
+
+To make multiple file edits, provide the following:
+1. filePath: The path to the file to modify (absolute or relative) — used as fallback when a sub-edit omits its own filePath
+2. edits: An array of edit operations to perform, where each edit contains:
+    - filePath: The absolute path to the file to modify (optional — falls back to top-level filePath if omitted)
+    - oldString: The text to replace (must match the file contents exactly, including all whitespace and indentation)
+    - newString: The edited text to replace the oldString
+    - replaceAll: Replace all occurrences of oldString. This parameter is optional and defaults to false.
+
+IMPORTANT:
+- All edits are applied in sequence, in the order they are provided
+- Each edit operates on the result of the previous edit
+- If an edit fails, subsequent edits are skipped but previous edits remain applied
+- Each edit's result is reported individually with line change stats (+X, −Y) — the model sees which edits succeeded and which failed
+- Both top-level filePath and per-edit filePath are optional; at least one must be provided per edit (per-edit overrides top-level)
+
+When to use multiedit vs batch:
+- Use multiedit for multiple sequential dependent edits (across one or more files)
+- Use batch for multiple independent edits on DIFFERENT files in parallel
+- If edits are on different files and independent, prefer batch (faster, runs in parallel)
+
+CRITICAL REQUIREMENTS:
+1. All edits follow the same requirements as the single Edit tool
+2. Plan your edits carefully to avoid conflicts between sequential operations
+3. Do not leave the code in a broken state
+
+WARNING:
+- The tool will fail if edits.oldString doesn't match the file contents exactly (including whitespace)
+- The tool will fail if edits.oldString and edits.newString are the same
+- Since edits are applied in sequence, ensure that earlier edits don't affect the text that later edits are trying to find
+- Each failed edit is reported; successful edits before it are NOT reverted
+
+When making edits:
+- Ensure all edits result in idiomatic, correct code
+- Always use file paths (absolute preferred)
+- Only use emojis if the user explicitly requests it
+- Use replaceAll for replacing and renaming strings across the file
+
+Example — renaming a function and its call sites in one file:
+[
+  {"edits": [
+    {"filePath": "/home/user/project/src/utils.ts", "oldString": "function getCwd()", "newString": "function getCurrentWorkingDirectory()", "replaceAll": true},
+    {"filePath": "/home/user/project/src/utils.ts", "oldString": "getCwd(", "newString": "getCurrentWorkingDirectory(", "replaceAll": true}
+  ]}
+]
+Note: The second edit only works because the first edit was applied first, changing all "getCwd()" to "getCurrentWorkingDirectory()". Then the second edit catches remaining call sites like "getCwd(someArg)".

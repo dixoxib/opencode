@@ -1,0 +1,10 @@
+Read files or directories from disk. Requires absolute path.
+
+PARAMETERS: { filePath, offset? (1-indexed, default 1; negative = tail mode, e.g. -500 reads last 500 lines), limit? (default 2000) }
+
+RULES:
+- Reads up to 2000 lines per call; use offset for later sections
+- Output is line-numbered: "N: content"
+- Call in parallel for multiple known files
+- Avoid tiny repeated slices (30 lines) — use larger windows
+- Use grep to locate content within files; glob to find files by pattern

@@ -540,16 +540,20 @@ export function filterCompacted(msgs: Iterable<WithParts>) {
       continue
     }
     if (msg.info.role === "user" && completed.has(msg.info.id)) {
-      const part = msg.parts.find((item): item is CompactionPart => item.type === "compaction")
+      const part = msg.parts.find((item): item is CompactionPart => item.type === "compaction" || item.type === "seam")
       if (!part) continue
+      if (msg.info.agent === "seam") {
+        result.pop()
+        continue
+      }
       if (!part.tail_start_id) break
       retain = part.tail_start_id
       if (msg.info.id === retain) break
       continue
     }
-    if (msg.info.role === "user" && completed.has(msg.info.id) && msg.parts.some((part) => part.type === "compaction"))
+    if (msg.info.role === "user" && completed.has(msg.info.id) && msg.parts.some((part) => part.type === "compaction" || part.type === "seam"))
       break
-    if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish && !msg.info.error)
+    if (msg.info.role === "assistant" && (msg.info.summary || msg.info.mode === "seam") && msg.info.finish && !msg.info.error)
       completed.add(msg.info.parentID)
   }
   result.reverse()
@@ -606,7 +610,7 @@ export function latest(msgs: WithParts[]) {
   const tasks = msgs.flatMap((m) =>
     finished && m.info.id <= finished.id
       ? []
-      : m.parts.filter((p): p is CompactionPart | SubtaskPart => p.type === "compaction" || p.type === "subtask"),
+      : m.parts.filter((p): p is CompactionPart | SubtaskPart => p.type === "compaction" || p.type === "seam" || p.type === "subtask"),
   )
   return { user, assistant, finished, tasks }
 }

@@ -1,0 +1,5 @@
+Directory listing with ignore patterns. Returns tree view: files, sizes, and directory structure.
+
+PARAMETERS: { path (absolute), ignore? (glob patterns like ["node_modules", ".git"]) }
+
+Use when exploring a directory. For searching files by name pattern, use glob. For searching file contents, use grep.

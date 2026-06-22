@@ -14,7 +14,7 @@ import { Reference } from "@/reference/reference"
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
 const MAX_LINE_SUFFIX = `... (line truncated to ${MAX_LINE_LENGTH} chars)`
-const MAX_BYTES = 50 * 1024
+const MAX_BYTES = 250 * 1024
 const MAX_BYTES_LABEL = `${MAX_BYTES / 1024} KB`
 const SAMPLE_BYTES = 4096
 const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
@@ -28,8 +28,8 @@ class ReadStop extends Schema.TaggedErrorClass<ReadStop>()("ReadStop", {}) {}
 // unchanged; purely CLI-facing uses must now send numbers rather than strings.
 export const Parameters = Schema.Struct({
   filePath: Schema.String.annotate({ description: "The absolute path to the file or directory to read" }),
-  offset: Schema.optional(NonNegativeInt).annotate({
-    description: "The line number to start reading from (1-indexed)",
+  offset: Schema.optional(Schema.Number).annotate({
+    description: "The line number to start reading from (1-indexed). Negative values read the last N lines (tail mode)",
   }),
   limit: Schema.optional(NonNegativeInt).annotate({
     description: "The maximum number of lines to read (defaults to 2000)",
@@ -137,15 +137,13 @@ export const ReadTool = Tool.define<
     })
 
     const lines = Effect.fn("ReadTool.lines")(function* (filepath: string, opts: { limit: number; offset: number }) {
-      const start = opts.offset - 1
-      const raw: string[] = []
+      const tail = opts.offset < 0
+      const start = tail ? 0 : opts.offset - 1
+      const capacity = tail ? Math.abs(opts.offset) + opts.limit : 0
       const flags = { bytes: 0, count: 0, cut: false, more: false, done: false }
+      const raw: string[] = []
+      let totalLines = 0
 
-      // Note: prefer manual TextDecoder over Stream.decodeText — when the source stream
-      // ends without flushing, decodeText drops the final unterminated line. We also
-      // avoid Stream.runForEachWhile (it currently swallows the final unterminated
-      // line of the upstream splitLines pipeline) and use a tagged error to stop the
-      // upstream file stream as soon as the byte cap is reached.
       const decoder = new TextDecoder("utf-8")
       yield* fs.stream(filepath).pipe(
         Stream.map((bytes) => decoder.decode(bytes, { stream: true })),
@@ -154,15 +152,29 @@ export const ReadTool = Tool.define<
           Effect.gen(function* () {
             if (flags.done) return yield* new ReadStop()
             flags.count += 1
-            if (flags.count <= start) return
+            totalLines = flags.count
 
-            if (raw.length >= opts.limit) {
+            // Skip lines before start (normal mode) or count all lines (tail mode)
+            if (!tail && flags.count <= start) return
+
+            // Line limit reached (normal mode only)
+            if (!tail && raw.length >= opts.limit) {
               flags.more = true
               return
             }
 
             const line = text.length > MAX_LINE_LENGTH ? text.substring(0, MAX_LINE_LENGTH) + MAX_LINE_SUFFIX : text
             const size = Buffer.byteLength(line, "utf-8") + (raw.length > 0 ? 1 : 0)
+
+            // Tail mode: ring buffer — keep only last `capacity` lines
+            if (tail) {
+              const cap = capacity
+              if (raw.length >= cap) raw.shift()
+              raw.push(line)
+              return
+            }
+
+            // Normal mode: byte cap applies to output only
             if (flags.bytes + size <= MAX_BYTES) {
               raw.push(line)
               flags.bytes += size
@@ -178,7 +190,16 @@ export const ReadTool = Tool.define<
         Effect.catchTag("ReadStop", () => Effect.void),
       )
 
-      return { raw, count: flags.count, cut: flags.cut, more: flags.more, offset: opts.offset }
+      // Tail mode: show the last |offset| lines, capped by limit
+      let result = raw
+      let displayOffset = opts.offset
+      if (tail) {
+        const count = Math.min(Math.abs(opts.offset), opts.limit)
+        const from = Math.max(0, raw.length - count)
+        result = raw.slice(from)
+        displayOffset = Math.max(1, totalLines - result.length + 1)
+      }
+      return { raw: result, count: totalLines, cut: flags.cut, more: flags.more, offset: displayOffset }
     })
 
     const isBinaryFile = (filepath: string, bytes: Uint8Array) => {

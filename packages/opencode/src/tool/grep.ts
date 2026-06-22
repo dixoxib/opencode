@@ -19,6 +19,9 @@ export const Parameters = Schema.Struct({
   include: Schema.optional(Schema.String).annotate({
     description: 'File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")',
   }),
+  context: Schema.optional(Schema.Number).annotate({
+    description: "Number of context lines to show before and after each match",
+  }),
 })
 
 export const GrepTool = Tool.define(
@@ -31,7 +34,7 @@ export const GrepTool = Tool.define(
     return {
       description: DESCRIPTION,
       parameters: Parameters,
-      execute: (params: { pattern: string; path?: string; include?: string }, ctx: Tool.Context) =>
+      execute: (params: { pattern: string; path?: string; include?: string; context?: number }, ctx: Tool.Context) =>
         Effect.gen(function* () {
           const empty = {
             title: params.pattern,
@@ -74,6 +77,7 @@ export const GrepTool = Tool.define(
             pattern: params.pattern,
             glob: params.include ? [params.include] : undefined,
             file,
+            context: params.context,
             signal: ctx.abort,
           })
           if (result.items.length === 0) return empty
@@ -82,6 +86,7 @@ export const GrepTool = Tool.define(
             path: FSUtil.resolve(path.isAbsolute(item.path.text) ? item.path.text : path.join(cwd, item.path.text)),
             line: item.line_number,
             text: item.lines.text,
+            kind: item.kind,
           }))
           const times = new Map(
             (yield* Effect.forEach(
@@ -113,8 +118,8 @@ export const GrepTool = Tool.define(
           const final = truncated ? matches.slice(0, limit) : matches
           if (final.length === 0) return empty
 
-          const total = matches.length
-          const output = [`Found ${total} matches${truncated ? ` (showing first ${limit})` : ""}`]
+          const matchCount = matches.filter((m: any) => m.kind === "match").length
+          const output = [`Found ${matchCount} matches${truncated ? ` (showing ${limit} results including context)` : ""}`]
 
           let current = ""
           for (const match of final) {
@@ -125,13 +130,14 @@ export const GrepTool = Tool.define(
             }
             const text =
               match.text.length > MAX_LINE_LENGTH ? match.text.substring(0, MAX_LINE_LENGTH) + "..." : match.text
-            output.push(`  Line ${match.line}: ${text}`)
+            const prefix = (match as any).kind === "context" ? "  >" : "   "
+            output.push(`${prefix} Line ${match.line}: ${text}`)
           }
 
           if (truncated) {
             output.push("")
             output.push(
-              `(Results truncated: showing ${limit} of ${total} matches (${total - limit} hidden). Consider using a more specific path or pattern.)`,
+              `(Results truncated: showing ${limit} of ${matchCount} matches (${matches.length - limit} hidden). Consider using a more specific path or pattern.)`,
             )
           }
 
@@ -143,7 +149,7 @@ export const GrepTool = Tool.define(
           return {
             title: params.pattern,
             metadata: {
-              matches: total,
+              matches: matchCount,
               truncated,
             },
             output: output.join("\n"),

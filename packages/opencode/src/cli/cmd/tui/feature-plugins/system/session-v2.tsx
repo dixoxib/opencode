@@ -229,11 +229,12 @@ function ShellMessage(props: { message: SessionMessageShell }) {
 
 function CompactionMessage(props: { message: SessionMessageCompaction }) {
   const { theme, syntax } = useTheme()
+  const isSeam = props.message.reason === "seam"
   return (
     <box
       marginTop={1}
       border={["top"]}
-      title={props.message.reason === "auto" ? " Auto Compaction " : " Compaction "}
+      title={isSeam ? " Seam " : props.message.reason === "auto" ? " Auto Compaction " : " Compaction "}
       titleAlignment="center"
       borderColor={theme.borderActive}
       flexShrink={0}

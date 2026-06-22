@@ -76,6 +76,11 @@ export const Match = Schema.Struct({
   data: SearchMatch,
 })
 
+const GrepContext = Schema.Struct({
+  type: Schema.Literal("context"),
+  data: SearchMatch,
+})
+
 const End = Schema.Struct({
   type: Schema.Literal("end"),
   data: Schema.Struct({
@@ -93,16 +98,17 @@ const Summary = Schema.Struct({
   }),
 })
 
-const Result = Schema.Union([Begin, Match, End, Summary])
+const Result = Schema.Union([Begin, Match, GrepContext, End, Summary])
 const decodeResult = Schema.decodeUnknownEffect(Schema.fromJsonString(Result))
 
 export type Result = Schema.Schema.Type<typeof Result>
 export type Match = Schema.Schema.Type<typeof Match>
-export type Item = Match["data"]
+export type GrepContext = Schema.Schema.Type<typeof GrepContext>
+export type SearchItem = Schema.Schema.Type<typeof SearchMatch> & { kind: "match" | "context" }
+export type Item = SearchItem  // keep Item for backward compat
 export type Begin = Schema.Schema.Type<typeof Begin>
 export type End = Schema.Schema.Type<typeof End>
 export type Summary = Schema.Schema.Type<typeof Summary>
-export type Row = Match["data"]
 
 export interface SearchResult {
   items: Item[]
@@ -125,6 +131,7 @@ export interface SearchInput {
   limit?: number
   follow?: boolean
   file?: string[]
+  context?: number
   signal?: AbortSignal
 }
 
@@ -178,7 +185,7 @@ function clean(file: string) {
   return path.normalize(file.replace(/^\.[\\/]/, ""))
 }
 
-function row(data: Row): Row {
+function row(data: Schema.Schema.Type<typeof SearchMatch>): Schema.Schema.Type<typeof SearchMatch> {
   return {
     ...data,
     path: {
@@ -216,6 +223,7 @@ function searchArgs(input: SearchInput) {
     for (const glob of input.glob) args.push(`--glob=${glob}`)
   }
   if (input.limit) args.push(`--max-count=${input.limit}`)
+  if (input.context) args.push(`--context=${input.context}`)
   args.push("--", input.pattern, ...(input.file ?? ["."]))
   return args
 }
@@ -391,8 +399,11 @@ export const layer: Layer.Layer<Service, never, FSUtil.Service | ChildProcessSpa
                   Stream.splitLines,
                   Stream.filter((line) => line.length > 0),
                   Stream.mapEffect(parse),
-                  Stream.filter((item): item is Match => item.type === "match"),
-                  Stream.map((item) => row(item.data)),
+                  Stream.filter((item): item is Match | GrepContext => item.type === "match" || item.type === "context"),
+                  Stream.map((item) => ({
+                    kind: item.type as "match" | "context",
+                    ...row(item.data),
+                  })),
                   Stream.runCollect,
                   Effect.map((chunk) => [...chunk]),
                 ),

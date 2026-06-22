@@ -98,6 +98,7 @@ export function fromRow(row: SessionRow): Info {
         read: row.tokens_cache_read,
         write: row.tokens_cache_write,
       },
+      since_seam: row.tokens_since_seam ?? 0,
     },
     share,
     metadata: row.metadata ?? undefined,
@@ -142,8 +143,9 @@ export function toRow(info: Info) {
     tokens_input: (info.tokens ?? EmptyTokens).input,
     tokens_output: (info.tokens ?? EmptyTokens).output,
     tokens_reasoning: (info.tokens ?? EmptyTokens).reasoning,
-    tokens_cache_read: (info.tokens ?? EmptyTokens).cache.read,
-    tokens_cache_write: (info.tokens ?? EmptyTokens).cache.write,
+      tokens_cache_read: (info.tokens ?? EmptyTokens).cache.read,
+      tokens_cache_write: (info.tokens ?? EmptyTokens).cache.write,
+      tokens_since_seam: info.tokens?.since_seam ?? 0,
     revert: info.revert ?? null,
     permission: info.permission,
     time_created: info.time.created,
@@ -178,13 +180,14 @@ const Tokens = Schema.Struct({
   input: Schema.Finite,
   output: Schema.Finite,
   reasoning: Schema.Finite,
+  since_seam: Schema.optional(Schema.Finite),
   cache: Schema.Struct({
     read: Schema.Finite,
     write: Schema.Finite,
   }),
 })
 
-const EmptyTokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+const EmptyTokens = { input: 0, output: 0, reasoning: 0, since_seam: 0, cache: { read: 0, write: 0 } }
 
 const Share = Schema.Struct({
   url: Schema.String,

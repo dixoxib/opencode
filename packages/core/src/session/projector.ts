@@ -86,20 +86,23 @@ function applyUsage(
   sessionID: (typeof SessionV1.Event.MessageUpdated.Type)["data"]["sessionID"],
   value: Usage,
   sign = 1,
+  seam = false,
 ) {
-  return db
-    .update(SessionTable)
-    .set({
-      cost: sql`${SessionTable.cost} + ${value.cost * sign}`,
-      tokens_input: sql`${SessionTable.tokens_input} + ${value.tokens.input * sign}`,
-      tokens_output: sql`${SessionTable.tokens_output} + ${value.tokens.output * sign}`,
-      tokens_reasoning: sql`${SessionTable.tokens_reasoning} + ${value.tokens.reasoning * sign}`,
-      tokens_cache_read: sql`${SessionTable.tokens_cache_read} + ${value.tokens.cache.read * sign}`,
-      tokens_cache_write: sql`${SessionTable.tokens_cache_write} + ${value.tokens.cache.write * sign}`,
-      time_updated: sql`${SessionTable.time_updated}`,
-    })
-    .where(eq(SessionTable.id, sessionID))
-    .run()
+  const set: Record<string, unknown> = {
+    cost: sql`${SessionTable.cost} + ${value.cost * sign}`,
+    tokens_input: sql`${SessionTable.tokens_input} + ${value.tokens.input * sign}`,
+    tokens_output: sql`${SessionTable.tokens_output} + ${value.tokens.output * sign}`,
+    tokens_reasoning: sql`${SessionTable.tokens_reasoning} + ${value.tokens.reasoning * sign}`,
+    tokens_cache_read: sql`${SessionTable.tokens_cache_read} + ${value.tokens.cache.read * sign}`,
+    tokens_cache_write: sql`${SessionTable.tokens_cache_write} + ${value.tokens.cache.write * sign}`,
+    time_updated: sql`${SessionTable.time_updated}`,
+  }
+  if (seam) {
+    set.tokens_since_seam = sql`0`
+  } else {
+    set.tokens_since_seam = sql`${SessionTable.tokens_since_seam} + ${value.tokens.output * sign} + ${(value.tokens.reasoning ?? 0) * sign}`
+  }
+  return db.update(SessionTable).set(set).where(eq(SessionTable.id, sessionID)).run()
     .pipe(Effect.orDie)
 }
 
@@ -357,8 +360,15 @@ export const layer = Layer.effectDiscard(
           .pipe(Effect.orDie)
         const previous = row && usage(row.data)
         const next = usage(event.data.part)
-        if (previous) yield* applyUsage(db, row.session_id, previous, -1)
-        if (next) yield* applyUsage(db, sessionID, next)
+        const msgData = yield* db
+          .select({ data: MessageTable.data })
+          .from(MessageTable)
+          .where(eq(MessageTable.id, messageID))
+          .get()
+          .pipe(Effect.orDie)
+        const isSeam = msgData?.data && (msgData.data as any).mode === "seam"
+        if (previous) yield* applyUsage(db, row.session_id, previous, -1, isSeam)
+        if (next) yield* applyUsage(db, sessionID, next, 1, isSeam)
       }),
     )
     // session.next.* projectors are disabled while the v2 message projection is stabilized.

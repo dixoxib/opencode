@@ -35,8 +35,11 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
       })
     }
     const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
-    if (wasPlan && input.agent.name === "build") {
-      userMessage.parts.push({
+    const alreadyInjected = input.messages.some((msg) =>
+      msg.parts.some((p) => (p as any).synthetic && (p as any).text === BUILD_SWITCH),
+    )
+    if (wasPlan && input.agent.name === "build" && !alreadyInjected) {
+      const part = yield* sessions.updatePart({
         id: PartID.ascending(),
         messageID: userMessage.info.id,
         sessionID: userMessage.info.sessionID,
@@ -44,6 +47,7 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
         text: BUILD_SWITCH,
         synthetic: true,
       })
+      userMessage.parts.push(part)
     }
     return input.messages
   }

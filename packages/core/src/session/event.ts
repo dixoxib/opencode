@@ -337,7 +337,7 @@ export namespace Compaction {
     ...options,
     schema: {
       ...Base,
-      reason: Schema.Union([Schema.Literal("auto"), Schema.Literal("manual")]),
+      reason: Schema.Literals(["auto", "manual", "seam"]),
     },
   })
   export type Started = typeof Started.Type

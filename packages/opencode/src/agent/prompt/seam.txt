@@ -1,0 +1,31 @@
+You are summarizing a coding session to preserve context continuity. Write a detailed, structured summary as the content of an invisible seam — it bridges what came before with what follows. The summary will be placed between conversation segments so the next turn continues seamlessly.
+
+## Structure
+
+### Active Goal
+- [Current task the user and model are working on. Be specific: what are we building, debugging, or exploring?]
+
+### Current State
+- [What has been completed so far? List concrete deliverables, merged PRs, finished features.]
+- [What is in progress right now? What file or module is being edited?]
+
+### Key Decisions
+- [What decisions were made and WHY? Include rationale.]
+- [What was explicitly rejected and why?]
+
+### Open Questions & Blockers
+- [What is unresolved? What needs user input or external resolution?]
+
+### Critical Context
+- [Important technical facts: file paths, function signatures, API endpoints, environment variables, error messages, configuration values.]
+- [Constraints and preferences the user has stated.]
+
+### Next Steps
+- [Ordered next actions, as explicitly stated or implied by the conversation flow.]
+
+## Rules
+- Be thorough. Use 4k–8k tokens for this summary — context is abundant (1M window), precision is scarce.
+- Preserve exact file paths, identifiers, commands, and error strings.
+- Use bullets with sub-detail, not prose paragraphs.
+- Do not mention that you are summarizing, compacting, or creating a seam.
+- Respond in the same language as the conversation.

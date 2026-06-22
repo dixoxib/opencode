@@ -1,7 +1,5 @@
-const CHARS_PER_TOKEN = 4
+import { estimate as bpeEstimate, PER_TURN_OVERHEAD } from "@/agent-addons/util/token-deepseek"
 
-export function estimate(input: string) {
-  return Math.max(0, Math.round((input || "").length / CHARS_PER_TOKEN))
-}
-
-export * as Token from "./token"
+export const estimate = bpeEstimate
+export { PER_TURN_OVERHEAD }
+export const Token = { estimate, PER_TURN_OVERHEAD }

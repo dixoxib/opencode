@@ -1,0 +1,5 @@
+Fast content search with regex. Returns file paths + line numbers, sorted by modification time.
+
+PARAMETERS: { pattern (regex), path? (dir), include? (glob filter like "*.ts"), context? (number of surrounding lines to show above and below each match) }
+
+Use when finding files containing specific patterns. For counting matches within files, use bash with `rg` directly. For open-ended multi-round searches, use Task instead.

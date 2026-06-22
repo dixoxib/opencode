@@ -1,0 +1,12 @@
+Launch a subagent for multi-step autonomous work.
+
+PARAMETERS:
+- description: 3-5 word summary
+- prompt: detailed instructions (write code? research only? what to return)
+- subagent_type: agent type ({agents})
+- task_id (optional): resume a previous subagent
+
+IMPORTANT:
+- Tell subagent whether to WRITE or RESEARCH
+- Tell it how to verify (test commands)
+- Run independent subagents concurrently

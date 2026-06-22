@@ -1,0 +1,4 @@
+Run multiple INDEPENDENT tool calls in parallel. All start simultaneously — they cannot depend on each other. For dependent operations, call tools sequentially across separate messages.
+
+Good: [glob("*.ts"), read("config.ts")]
+Bad: [read("a.ts"), edit("a.ts")] — edit depends on read

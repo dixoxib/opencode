@@ -254,8 +254,9 @@ export function Session() {
     const sessionID = route.sessionID
     void (async () => {
       const previousWorkspace = untrack(() => project.workspace.current())
-      const result = await sdk.client.session.get({ sessionID }, { throwOnError: true })
-      if (!result.data) {
+      const result = await sdk.client.session.get({ sessionID })
+    const data = result.data
+    if (!data) {
         toast.show({
           message: `Session not found: ${sessionID}`,
           variant: "error",
@@ -567,6 +568,32 @@ export function Session() {
           sessionID: route.sessionID,
           modelID: selectedModel.modelID,
           providerID: selectedModel.providerID,
+        })
+        dialog.clear()
+      },
+    },
+    {
+      title: "Seam session",
+      value: "session.seam",
+      category: "Session",
+      slash: {
+        name: "seam",
+      },
+      run: () => {
+        const selectedModel = local.model.current()
+        if (!selectedModel) {
+          toast.show({
+            variant: "warning",
+            message: "Connect a provider to seam this session",
+            duration: 3000,
+          })
+          return
+        }
+        void sdk.client.session.summarize({
+          sessionID: route.sessionID,
+          modelID: selectedModel.modelID,
+          providerID: selectedModel.providerID,
+          agent: "seam",
         })
         dialog.clear()
       },
@@ -1354,7 +1381,7 @@ function UserMessage(props: {
   const queuedFg = createMemo(() => selectedForeground(theme, color()))
   const metadataVisible = createMemo(() => queued() || ctx.showTimestamps())
 
-  const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
+  const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction" || x.type === "seam"))
 
   return (
     <>
@@ -1423,7 +1450,7 @@ function UserMessage(props: {
         <box
           marginTop={1}
           border={["top"]}
-          title=" Compaction "
+          title={compaction()?.type === "seam" ? " Seam " : " Compaction "}
           titleAlignment="center"
           borderColor={theme.borderActive}
         />

@@ -1,3 +1,4 @@
+import { appendFileSync } from "fs"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Provider } from "@/provider/provider"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
@@ -115,6 +116,18 @@ const live: Layer.Layer<
         flags,
         isWorkflow,
       })
+
+      const req = JSON.stringify({
+        agent: input.agent.name,
+        sessionID: input.sessionID.slice(-8),
+        time: Date.now(),
+        systemLen: prepared.system.join("\n").length,
+        toolsCount: Object.keys(prepared.tools).length,
+        msgCount: prepared.messages.length,
+        systemFull: prepared.system.join("\n"),
+        tools: Object.keys(prepared.tools),
+      }) + "\n"
+      appendFileSync("/tmp/opencode-request-debug.log", req)
 
       // Wire up toolExecutor for DWS workflow models so that tool calls
       // from the workflow service are executed via opencode's tool system

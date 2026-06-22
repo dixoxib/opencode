@@ -160,6 +160,25 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  seam: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean).annotate({
+        description: "Enable context seaming (default: true)",
+      }),
+      block_size: Schema.optional(PositiveInt).annotate({
+        description: "BPE token count at which an auto-seam is triggered (default 200000)",
+      }),
+      interval: Schema.optional(PositiveInt).annotate({
+        description: "Number of assistant turns between seam checks (default 1 = every turn)",
+      }),
+      prune: Schema.optional(Schema.Boolean).annotate({
+        description: "Enable pruning of tool outputs in older seam blocks (default: true)",
+      }),
+      prune_margin: Schema.optional(PositiveInt).annotate({
+        description: "Token distance from current position before pruning older seam blocks (default: 50000)",
+      }),
+    }),
+  ),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),

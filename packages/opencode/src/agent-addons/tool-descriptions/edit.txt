@@ -1,0 +1,14 @@
+Performs exact string replacements in an existing file. You MUST Read the file first (at least once in this conversation).
+
+HOW MATCHING WORKS:
+- oldString is searched as a literal substring in the file content — whitespace and indentation must match exactly
+- oldString MUST include 3–5 lines of surrounding context to make the match unambiguous (one-liners are too fragile)
+- FAILS if oldString is not found at all → re-read the file and try again with more context
+- FAILS if oldString is found multiple times → use replaceAll: true OR add more context lines to make it unique
+- Strip the "N: " line-number prefix from Read tool output before using as oldString
+
+PARAMETERS:
+- filePath: absolute or relative path
+- oldString: the exact text block to replace (3–5 lines minimum, exact whitespace)
+- newString: replacement text (must differ from oldString)
+- replaceAll: if true, replaces ALL occurrences (default: false — replaces a SINGLE unique occurrence)
