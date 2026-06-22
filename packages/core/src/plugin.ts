@@ -6,6 +6,8 @@ import { Context, Effect, Exit, Layer, Schema, Scope } from "effect"
 import type { ModelV2 } from "./model"
 import type { Catalog } from "./catalog"
 import { EventV2 } from "./event"
+import { KeyedMutex } from "./effect/keyed-mutex"
+import { State } from "./state"
 
 export const ID = Schema.String.pipe(Schema.brand("Plugin.ID"))
 export type ID = typeof ID.Type
@@ -21,15 +23,7 @@ export const Event = {
 
 type HookSpec = {
   "catalog.transform": {
-    input: Catalog.Editor
-    output: {}
-  }
-  "account.switched": {
-    input: {
-      serviceID: import("./auth").Auth.ServiceID
-      from?: import("./auth").Auth.ID
-      to?: import("./auth").Auth.ID
-    }
+    input: Catalog.Draft
     output: {}
   }
   "aisdk.language": {
@@ -69,18 +63,16 @@ export type HookFunctions = {
 export type HookInput<Name extends keyof Hooks> = HookSpec[Name]["input"]
 export type HookOutput<Name extends keyof Hooks> = HookSpec[Name]["output"]
 
-export type Effect<R = never> = Effect.Effect<HookFunctions | void, never, R | Scope.Scope>
-
-export function define<R>(input: { id: ID; effect: Effect.Effect<HookFunctions | void, never, R> }) {
-  return input
-}
-
 export interface Interface {
   readonly add: (input: {
-    id: ID
+    id: string
     effect: Effect.Effect<void | HookFunctions, never, Scope.Scope>
   }) => Effect.Effect<void, never, never>
   readonly remove: (id: ID) => Effect.Effect<void>
+  readonly hook: <Name extends keyof Hooks>(
+    name: Name,
+    callback: (input: Hooks[Name]) => Effect.Effect<void> | void,
+  ) => Effect.Effect<State.Registration, never, Scope.Scope>
   readonly triggerFor: <Name extends keyof Hooks>(
     id: ID,
     name: Name,
@@ -104,30 +96,50 @@ export const layer = Layer.effect(
       hooks: HookFunctions
       scope: Scope.Closeable
     }[] = []
+    let registrations: {
+      [Name in keyof Hooks]: {
+        name: Name
+        callback: (input: Hooks[Name]) => Effect.Effect<void> | void
+      }
+    }[keyof Hooks][] = []
     const events = yield* EventV2.Service
+    const locks = KeyedMutex.makeUnsafe<ID>()
+    const scope = yield* Scope.make()
+
+    // One registry-owned scope lets shutdown remove every plugin transform in one batch.
+    yield* Effect.addFinalizer((exit) =>
+      Effect.gen(function* () {
+        hooks = []
+        yield* State.batch(Scope.close(scope, exit))
+      }),
+    )
 
     const svc = Service.of({
       add: Effect.fn("Plugin.add")(function* (input) {
-        const existing = hooks.find((item) => item.id === input.id)
-        if (existing) yield* Scope.close(existing.scope, Exit.void).pipe(Effect.ignore)
-        const scope = yield* Scope.make()
-        const result = yield* input.effect.pipe(
-          Scope.provide(scope),
-          Effect.withSpan("Plugin.load", {
-            attributes: {
-              "plugin.id": input.id,
-            },
+        const id = ID.make(input.id)
+        yield* locks.withLock(id)(
+          Effect.gen(function* () {
+            const existing = hooks.find((item) => item.id === id)
+            if (existing) yield* State.batch(Scope.close(existing.scope, Exit.void)).pipe(Effect.ignore)
+            const childScope = yield* Scope.fork(scope)
+            const result = yield* input.effect.pipe(
+              Scope.provide(childScope),
+              Effect.withSpan("Plugin.load", {
+                attributes: {
+                  "plugin.id": id,
+                },
+              }),
+              Effect.onExit((exit) => (Exit.isFailure(exit) ? Scope.close(childScope, exit) : Effect.void)),
+            )
+            const next = {
+              id,
+              hooks: result ?? {},
+              scope: childScope,
+            }
+            hooks = existing ? hooks.with(hooks.indexOf(existing), next) : [...hooks, next]
+            yield* events.publish(Event.Added, { id })
           }),
         )
-        hooks = [
-          ...hooks.filter((item) => item.id !== input.id),
-          {
-            id: input.id,
-            hooks: result ?? {},
-            scope,
-          },
-        ]
-        yield* events.publish(Event.Added, { id: input.id })
       }),
       trigger: Effect.fn("Plugin.trigger")(function* (name, input, output) {
         return yield* svc.triggerFor(ID.make("*"), name, input, output)
@@ -160,6 +172,12 @@ export const layer = Layer.effect(
           )
         }
 
+        for (const item of registrations) {
+          if (item.name !== name) continue
+          const result = item.callback(event as never)
+          if (Effect.isEffect(result)) yield* result
+        }
+
         for (const [field, draft] of draftEntries) {
           event[field] = finishDraft(draft)
         }
@@ -167,9 +185,26 @@ export const layer = Layer.effect(
         return event as any
       }),
       remove: Effect.fn("Plugin.remove")(function* (id) {
-        const existing = hooks.find((item) => item.id === id)
-        hooks = hooks.filter((item) => item.id !== id)
-        if (existing) yield* Scope.close(existing.scope, Exit.void).pipe(Effect.ignore)
+        yield* locks.withLock(id)(
+          Effect.gen(function* () {
+            const existing = hooks.find((item) => item.id === id)
+            hooks = hooks.filter((item) => item.id !== id)
+            if (existing) yield* State.batch(Scope.close(existing.scope, Exit.void)).pipe(Effect.ignore)
+          }),
+        )
+      }),
+      hook: Effect.fn("Plugin.hook")(function* (name, callback) {
+        const scope = yield* Scope.Scope
+        const registration = { name, callback } as (typeof registrations)[number]
+        let active = true
+        registrations = [...registrations, registration]
+        const dispose = Effect.sync(() => {
+          if (!active) return
+          active = false
+          registrations = registrations.filter((item) => item !== registration)
+        })
+        yield* Scope.addFinalizer(scope, dispose)
+        return { dispose }
       }),
     })
     return svc
