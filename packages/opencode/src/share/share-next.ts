@@ -19,9 +19,8 @@ import { SessionShareTable } from "@opencode-ai/core/share/sql"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { EventV2 } from "@opencode-ai/core/event"
-import { Flag } from "@opencode-ai/core/flag/flag"
 
-const disabled = !Flag.OPENCODE_ENABLE_SHARE
+const disabled = process.env["OPENCODE_DISABLE_SHARE"] === "true" || process.env["OPENCODE_DISABLE_SHARE"] === "1"
 
 export type Api = {
   create: string
