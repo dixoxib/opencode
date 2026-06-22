@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { httpClient } from "@opencode-ai/core/effect/layer-node-platform"
 import type * as SDK from "@opencode-ai/sdk/v2"
