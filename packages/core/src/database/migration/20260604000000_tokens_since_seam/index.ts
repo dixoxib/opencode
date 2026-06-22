@@ -1,2 +1,3 @@
-import { Database } from "../../database"
-export const migrate = (db: Database.Database) => db.run("SELECT 1")
+import type { DatabaseMigration } from "../../migration"
+const _migration = {} as DatabaseMigration.Migration
+export default _migration

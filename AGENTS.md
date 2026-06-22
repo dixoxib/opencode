@@ -4,7 +4,7 @@
 
 ## Commits and PR Titles
 
-Use conventional commit-style messages and PR titles: `type(scope): summary`.
+Conventional commit-style messages and PR titles: `type(scope): summary`.
 
 Valid types are `feat`, `fix`, `docs`, `chore`, `refactor`, and `test`. Scopes are optional; use the affected package or area when helpful, e.g. `core`, `opencode`, `tui`, `app`, `desktop`, `sdk`, or `plugin`.
 
@@ -14,16 +14,16 @@ Examples: `fix(tui): simplify thinking toggle styling`, `docs: update contributi
 
 ### General Principles
 
-- Keep things in one function unless composable or reusable
-- Do not extract single-use helpers preemptively. Inline the logic at the call site unless the helper is reused, hides a genuinely complex boundary, or has a clear independent name that improves the caller.
-- Avoid `try`/`catch` where possible
-- Avoid using the `any` type
-- Use Bun APIs when possible, like `Bun.file()`
-- Rely on type inference when possible; avoid explicit type annotations or interfaces unless necessary for exports or clarity
-- Prefer functional array methods (flatMap, filter, map) over for loops; use type guards on filter to maintain type inference downstream
-- In `src/config`, follow the existing self-export pattern at the top of the file (for example `export * as ConfigAgent from "./agent"`) when adding a new config module.
+- Logic stays in one function unless composable or reusable.
+- Single-use helpers stay inline at the call site. Extraction makes sense when the helper is reused, hides a genuinely complex boundary, or names a clear concept that improves the caller.
+- `try`/`catch` is avoided.
+- The `any` type is avoided.
+- Bun APIs are preferred when possible, like `Bun.file()`.
+- Type inference carries the weight; explicit type annotations or interfaces appear only for exports or clarity.
+- Functional array methods (flatMap, filter, map) are preferred over for loops; type guards on filter maintain type inference downstream.
+- In `src/config`, the existing self-export pattern at the top of the file (for example `export * as ConfigAgent from "./agent"`) is followed when adding a new config module.
 
-Reduce total variable count by inlining when a value is only used once.
+Total variable count stays low — values used once are inlined.
 
 ```ts
 // Good
@@ -36,7 +36,7 @@ const journal = await Bun.file(journalPath).json()
 
 ### Destructuring
 
-Avoid unnecessary destructuring. Use dot notation to preserve context.
+Destructuring is avoided when dot notation preserves context.
 
 ```ts
 // Good
@@ -49,14 +49,14 @@ const { a, b } = obj
 
 ### Imports
 
-- Never alias imports. Do not use `import { foo as bar } from "..."` or renamed imports like `resolve as pathResolve`.
-- Never use star imports. Do not use `import * as Foo from "..."` or `import type * as Foo from "..."`.
-- If a namespace-style value is needed, import the module's own exported namespace by name, for example `import { Project } from "@opencode-ai/core/project"`, then reference `Project.ID`.
-- Prefer dynamic imports for heavy modules that are only needed in selected code paths, especially in startup-sensitive entrypoints. Destructure dynamic import bindings near the top of the narrowest scope that needs them so they read like normal imports. Avoid inline chains such as `await import("./module").then((mod) => mod.value())` or `(await import("./module")).value()`. Keep branch-specific imports inside the branch that needs them to preserve lazy loading.
+- Imports are not aliased. Renamed imports like `resolve as pathResolve` are not used.
+- Star imports (`import * as Foo from "..."` or `import type * as Foo from "..."`) are not used.
+- When a namespace-style value is needed, the module's own exported namespace is imported by name, for example `import { Project } from "@opencode-ai/core/project"`, then referenced as `Project.ID`.
+- Dynamic imports are preferred for heavy modules needed only in selected code paths, especially in startup-sensitive entrypoints. Dynamic import bindings are destructured near the top of the narrowest scope that needs them so they read like normal imports. Inline chains like `await import("./module").then((mod) => mod.value())` or `(await import("./module")).value()` are avoided. Branch-specific imports stay inside the branch that needs them to preserve lazy loading.
 
 ### Variables
 
-Prefer `const` over `let`. Use ternaries or early returns instead of reassignment.
+`const` is preferred over `let`. Ternaries or early returns replace reassignment.
 
 ```ts
 // Good
@@ -70,7 +70,7 @@ else foo = 2
 
 ### Control Flow
 
-Avoid `else` statements. Prefer early returns.
+`else` is avoided; early returns are preferred.
 
 ```ts
 // Good
@@ -88,7 +88,7 @@ function foo() {
 
 ### Complex Logic
 
-When a function has several validation branches or supporting details, make the main function read as the happy path and move supporting details into small helpers below it.
+When a function has several validation branches or supporting details, the main function reads as the happy path and supporting details move into small helpers below it.
 
 ```ts
 // Good
@@ -103,15 +103,15 @@ function requireConfig(input: unknown) {
 }
 ```
 
-- Keep helpers close to the code they support, below the main export when that improves readability.
-- Do not over-abstract simple expressions into many single-use helpers; extract only when it names a real concept like `requireConfig` or `readMetadata`.
-- Do not return `Effect` from helpers unless they actually perform effectful work. Synchronous parsing, validation, and option building should stay synchronous.
-- Prefer Effect schema helpers such as `Schema.UnknownFromJsonString` and `Schema.decodeUnknownOption` over manual `JSON.parse` wrapped in `Effect.try` when parsing untrusted JSON strings.
-- Add comments for non-obvious constraints and surprising behavior, not for obvious assignments or control flow.
+- Helpers stay close to the code they support, below the main export when that improves readability.
+- Simple expressions are not over-abstracted into many single-use helpers; extraction is used only when it names a real concept like `requireConfig` or `readMetadata`.
+- Helpers that perform effectful work return `Effect`; synchronous parsing, validation, and option building stay synchronous.
+- Effect schema helpers such as `Schema.UnknownFromJsonString` and `Schema.decodeUnknownOption` are preferred over manual `JSON.parse` wrapped in `Effect.try` when parsing untrusted JSON strings.
+- Comments document non-obvious constraints and surprising behavior, not obvious assignments or control flow.
 
 ### Schema Definitions (Drizzle)
 
-Use snake_case for field names so column names don't need to be redefined as strings.
+Snake_case is used for field names so column names don't need to be redefined as strings.
 
 ```ts
 // Good
@@ -131,10 +131,10 @@ const table = sqliteTable("session", {
 
 ## Testing
 
-- Avoid mocks as much as possible
-- Test actual implementation, do not duplicate logic into tests
-- Tests cannot run from repo root (guard: `do-not-run-tests-from-root`); run from package dirs like `packages/opencode`.
+- Mocks are avoided as much as possible.
+- Tests exercise the actual implementation, not duplicated logic.
+- Tests run from package directories like `packages/opencode`, never from repo root (guard: `do-not-run-tests-from-root`).
 
 ## Type Checking
 
-- Always run `bun typecheck` from package directories (e.g., `packages/opencode`), never `tsc` directly.
+`bun typecheck` is run from package directories (e.g., `packages/opencode`), not `tsc` directly.
