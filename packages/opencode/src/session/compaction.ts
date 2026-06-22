@@ -39,6 +39,39 @@ export const PRUNE_MINIMUM = 20_000
 export const PRUNE_PROTECT = 40_000
 const TOOL_OUTPUT_MAX_CHARS = 2_000
 const PRUNE_PROTECTED_TOOLS = ["skill"]
+// OpenCode-DS-V4: preserve markdown file outputs during pruning
+function isMdPath(input: any): boolean {
+  if (!input) return false
+  const path = input.filePath || input.file_path || input.path || ""
+  return String(path).endsWith(".md")
+}
+function isMdOutput(part: SessionV1.ToolPart): boolean {
+  return isMdPath(part.state.input as any)
+}
+const COMPACTION_INSTRUCTIONS = `You are an anchored context summarization assistant for coding sessions.
+Summarize only the conversation history you are given. The newest turns may be kept verbatim outside your summary, so focus on the older context that still matters for continuing the work.
+If the prompt includes a <previous-summary> block, treat it as the current anchored summary. Update it with the new history by preserving still-true details, removing stale details, and merging in new facts.
+Always follow the exact output structure requested by the user prompt. Keep every section, preserve exact file paths and identifiers when known, and prefer terse bullets over paragraphs.
+Do not answer the conversation itself. Do not mention that you are summarizing, compacting, or merging context. Respond in the same language as the conversation.`
+const SEAM_INSTRUCTIONS = `You are summarizing a coding session to preserve context continuity. Write a detailed, structured summary as an invisible bridge between what came before and what follows.
+
+## Structure
+
+### Active Goal
+- [Current task. Be specific: what are we building, debugging, or exploring?]
+
+### Current State
+- [Completed deliverables, finished features.]
+- [In progress: file or module being edited.]
+
+### Key Decisions
+- [What was decided and WHY. What was rejected and why?]
+
+### Open Questions & Blockers
+- [Unresolved items. What needs input or external resolution?]
+
+### Critical Context
+- [File paths, identifiers, configuration values that must survive compaction.]`
 const DEFAULT_TAIL_TURNS = 2
 const MIN_PRESERVE_RECENT_TOKENS = 2_000
 const MAX_PRESERVE_RECENT_TOKENS = 8_000
@@ -276,6 +309,7 @@ export const layer = Layer.effect(
           if (part.type !== "tool") continue
           if (part.state.status !== "completed") continue
           if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
+          if (isMdOutput(part)) continue
           if (part.state.time.compacted) break loop
           const estimate = Token.estimate(part.state.output)
           total += estimate
@@ -313,6 +347,7 @@ export const layer = Layer.effect(
       if (!parent || parent.info.role !== "user") {
         throw new Error(`Compaction parent must be a user message: ${input.parentID}`)
       }
+      const isSeam = parent.info.agent === "seam"
       const userMessage = parent.info
       const compactionPart = parent.parts.find((part): part is SessionV1.CompactionPart => part.type === "compaction")
 
@@ -381,6 +416,17 @@ export const layer = Layer.effect(
               }),
             )
       const ctx = yield* InstanceState.context
+      const env = [
+        `You are powered by the model named ${model.api.id}. The exact model ID is ${model.providerID}/${model.api.id}`,
+        `Here is some useful information about the environment you are running in:`,
+        `<env>`,
+        `  Working directory: ${ctx.directory}`,
+        `  Workspace root folder: ${ctx.worktree}`,
+        `  Is directory a git repo: ${ctx.project.vcs === "git" ? "yes" : "no"}`,
+        `  Platform: ${process.platform}`,
+        `  Today's date: ${new Date().toDateString()}`,
+        `</env>`,
+      ].join("\n")
       const msg: SessionV1.Assistant = {
         id: MessageID.ascending(),
         role: "assistant",
@@ -418,7 +464,7 @@ export const layer = Layer.effect(
         agent,
         sessionID: input.sessionID,
         tools: {},
-        system: [],
+        system: [env, isSeam ? SEAM_INSTRUCTIONS : COMPACTION_INSTRUCTIONS],
         messages: [
           ...modelMessages,
           {
