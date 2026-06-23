@@ -365,37 +365,19 @@ export const layer = Layer.effect(
       }
       if (pruneEnd < 0) return
 
-      // Prune tool outputs in messages up to pruneEnd
+      // Prune all tool outputs in messages older than pruneEnd — no protection for seam context
       let pruned = 0
-      let total = 0
-      const toPrune: SessionV1.ToolPart[] = []
-      let turns = 0
-
-      loop: for (let msgIndex = pruneEnd; msgIndex >= 0; msgIndex--) {
+      for (let msgIndex = pruneEnd; msgIndex >= 0; msgIndex--) {
         const msg = msgs[msgIndex]
-        if (msg.info.role === "user") turns++
-        if (turns > 2) {
-          for (const part of msg.parts) {
-            if (part.type !== "tool") continue
-            if (part.state.status !== "completed") continue
-            if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
-            if (isMdOutput(part)) continue
-            if (part.state.time.compacted) break loop
-            const estimate = Token.estimate(part.state.output)
-            total += estimate
-            if (total <= PRUNE_PROTECT) continue
-            pruned += estimate
-            toPrune.push(part)
-          }
-        }
-      }
-
-      if (pruned > PRUNE_MINIMUM) {
-        for (const part of toPrune) {
-          if (part.state.status === "completed") {
-            part.state.time.compacted = Date.now()
-            yield* session.updatePart(part)
-          }
+        if (msg.info.role === "assistant" && msg.info.summary) break
+        for (const part of msg.parts) {
+          if (part.type !== "tool") continue
+          if (part.state.status !== "completed") continue
+          if (part.state.time.compacted) continue
+          if (isMdOutput(part)) continue
+          part.state.time.compacted = Date.now()
+          yield* session.updatePart(part)
+          pruned++
         }
       }
     })

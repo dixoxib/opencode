@@ -1650,9 +1650,9 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
         <Show when={(!inMinimal() || expanded()) && summary().body}>
           <box paddingLeft={inMinimal() ? 2 : 0} marginTop={1}>
             <code
-              filetype="markdown"
-              drawUnstyledText={false}
-          streaming={!props.message.time.completed}
+               filetype="markdown"
+               drawUnstyledText={false}
+          streaming={true}
               syntaxStyle={syntax()}
               content={summary().body}
               conceal={ctx.conceal()}
@@ -1717,7 +1717,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
       <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3} marginTop={1} flexShrink={0}>
         <markdown
           syntaxStyle={syntax()}
-          streaming={!props.message.time.completed}
+          streaming={true}
           internalBlockMode="top-level"
           content={props.part.text.trim()}
           tableOptions={{ style: "grid" }}
