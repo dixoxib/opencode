@@ -183,6 +183,7 @@ export interface Interface {
     sessionID: SessionID
     auto: boolean
     overflow?: boolean
+    system?: string[]
   }) => Effect.Effect<"continue" | "stop">
   readonly create: (input: {
     sessionID: SessionID
@@ -405,6 +406,7 @@ export const layer = Layer.effect(
       sessionID: SessionID
       auto: boolean
       overflow?: boolean
+      system?: string[]
     }) {
       const parent = input.messages.findLast((m) => m.info.id === input.parentID)
       if (!parent || parent.info.role !== "user") {
@@ -527,7 +529,7 @@ export const layer = Layer.effect(
         agent,
         sessionID: input.sessionID,
         tools: {},
-        system: [env, isSeam ? SEAM_INSTRUCTIONS : COMPACTION_INSTRUCTIONS],
+        system: input.system ?? [env, isSeam ? SEAM_INSTRUCTIONS : COMPACTION_INSTRUCTIONS],
         messages: [
           ...modelMessages,
           {
