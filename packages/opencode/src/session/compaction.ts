@@ -332,10 +332,71 @@ export const layer = Layer.effect(
       }
     })
 
-    // OpenCode-DS-V4: prune old seam summary blocks by marking them for filterCompacted
     const pruneSeam = Effect.fn("SessionCompaction.pruneSeam")(function* (input: { sessionID: SessionID }) {
-      // For now, delegate to regular prune — seam blocks are cleaned up by filterCompacted
-      return yield* prune(input)
+      const cfg = yield* config.get()
+      if (cfg.seam?.prune === false || process.env["OPENCODE_SEAM_PRUNE"] === "false") return
+      const margin = cfg.seam?.prune_margin ?? 50_000
+
+      const msgs = yield* session
+        .messages({ sessionID: input.sessionID })
+        .pipe(Effect.catchIf(NotFoundError.isInstance, () => Effect.succeed(undefined)))
+      if (!msgs) return
+
+      // Walk backward, find first seam assistant beyond margin
+      let tokens = 0
+      let pruneEnd = -1
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const msg = msgs[i]
+        if (msg.info.role === "assistant" && msg.info.summary === true) {
+          // Check if parent user was a seam
+          const parent = msgs.find((m) => (m.info as any).id === (msg.info as any).parentID)
+          if (parent && parent.info.agent === "seam") {
+            if (tokens >= margin) { pruneEnd = i; break }
+          }
+        }
+        for (const part of msg.parts as any[]) {
+          if (part.text) tokens += Token.estimate(part.text)
+          if (part.type === "tool") {
+            if (part.state?.output) tokens += Token.estimate(String(part.state.output))
+            if (part.state?.input) tokens += Token.estimate(JSON.stringify(part.state.input))
+          }
+        }
+      }
+      if (pruneEnd < 0) return
+
+      // Prune tool outputs in messages up to pruneEnd
+      let pruned = 0
+      let total = 0
+      const toPrune: SessionV1.ToolPart[] = []
+      let turns = 0
+
+      loop: for (let msgIndex = pruneEnd; msgIndex >= 0; msgIndex--) {
+        const msg = msgs[msgIndex]
+        if (msg.info.role === "user") turns++
+        if (turns > 2) {
+          for (const part of msg.parts) {
+            if (part.type !== "tool") continue
+            if (part.state.status !== "completed") continue
+            if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
+            if (isMdOutput(part)) continue
+            if (part.state.time.compacted) break loop
+            const estimate = Token.estimate(part.state.output)
+            total += estimate
+            if (total <= PRUNE_PROTECT) continue
+            pruned += estimate
+            toPrune.push(part)
+          }
+        }
+      }
+
+      if (pruned > PRUNE_MINIMUM) {
+        for (const part of toPrune) {
+          if (part.state.status === "completed") {
+            part.state.time.compacted = Date.now()
+            yield* session.updatePart(part)
+          }
+        }
+      }
     })
 
     const processCompaction = Effect.fn("SessionCompaction.process")(function* (input: {
