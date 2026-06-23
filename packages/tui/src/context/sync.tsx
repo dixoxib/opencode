@@ -165,29 +165,6 @@ export const {
         .then((x) => (x.data ?? []).toSorted((a, b) => a.id.localeCompare(b.id)))
     }
 
-    const deltaBuffer = new Map<string, { messageID: string; field: string; text: string }>()
-    let deltaFlush: (() => void) | undefined
-
-    function flushDeltas() {
-      deltaFlush = undefined
-      for (const [key, entry] of deltaBuffer) {
-        const [messageID, field] = key.split(":").slice(0, 2)
-        const partID = key.slice(messageID.length + field.length + 2)
-        setStore(
-          "part",
-          messageID,
-          produce((draft) => {
-            const result = search(draft, partID, (p) => p.id)
-            if (result.found) {
-              const existing = draft[result.index][entry.field as keyof typeof draft[number]] as string | undefined
-              ;(draft[result.index][entry.field as keyof typeof draft[number]] as string) = (existing ?? "") + entry.text
-            }
-          }),
-        )
-      }
-      deltaBuffer.clear()
-    }
-
     event.subscribe((event, { workspace }) => {
       switch (event.type) {
         case "server.instance.disposed":
@@ -407,21 +384,16 @@ export const {
           const result = search(parts, event.properties.partID, (p) => p.id)
           if (!result.found) break
           touchPart(event.properties.sessionID, event.properties.partID)
-          const key = event.properties.messageID + ":" + event.properties.field + ":" + event.properties.partID
-          const existing = deltaBuffer.get(key)
-          if (existing) {
-            existing.text += event.properties.delta
-          } else {
-            deltaBuffer.set(key, {
-              messageID: event.properties.messageID,
-              field: event.properties.field,
-              text: event.properties.delta,
-            })
-            if (!deltaFlush) {
-              deltaFlush = () => {}
-              queueMicrotask(flushDeltas)
-            }
-          }
+          setStore(
+            "part",
+            event.properties.messageID,
+            produce((draft) => {
+              const part = draft[result.index]
+              const field = event.properties.field as keyof typeof part
+              const existing = part[field] as string | undefined
+              ;(part[field] as string) = (existing ?? "") + event.properties.delta
+            }),
+          )
           break
         }
 
