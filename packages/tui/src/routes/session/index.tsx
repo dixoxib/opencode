@@ -1652,7 +1652,7 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
             <code
               filetype="markdown"
               drawUnstyledText={false}
-              streaming={true}
+          streaming={!props.message.time.completed}
               syntaxStyle={syntax()}
               content={summary().body}
               conceal={ctx.conceal()}
@@ -1717,7 +1717,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
       <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3} marginTop={1} flexShrink={0}>
         <markdown
           syntaxStyle={syntax()}
-          streaming={true}
+          streaming={!props.message.time.completed}
           internalBlockMode="top-level"
           content={props.part.text.trim()}
           tableOptions={{ style: "grid" }}
