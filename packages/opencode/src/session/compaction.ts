@@ -332,8 +332,9 @@ export const layer = Layer.effect(
       }
     })
 
-    // OpenCode-DS-V4: prune old seam summary blocks
+    // OpenCode-DS-V4: prune old seam summary blocks by marking them for filterCompacted
     const pruneSeam = Effect.fn("SessionCompaction.pruneSeam")(function* (input: { sessionID: SessionID }) {
+      // For now, delegate to regular prune — seam blocks are cleaned up by filterCompacted
       return yield* prune(input)
     })
 
