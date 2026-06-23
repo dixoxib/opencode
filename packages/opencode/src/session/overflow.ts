@@ -32,7 +32,7 @@ export function isOverflow(input: {
   outputTokenMax?: number
   contextLimit?: number
 }) {
-  if (input.cfg.compaction?.auto === false) return false
+  if (input.cfg.compaction?.auto === false && !input.contextLimit && !contextLimit()) return false
   if ((input.model.limit.context === 0 && !input.contextLimit && !contextLimit())) return false
 
   const count =

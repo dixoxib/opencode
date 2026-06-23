@@ -218,6 +218,7 @@ export const layer = Layer.effect(
         tokens: input.tokens,
         model: input.model,
         outputTokenMax: flags.outputTokenMax,
+        contextLimit: flags.contextLimit,
       })
     })
 
