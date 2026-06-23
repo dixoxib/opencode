@@ -1715,13 +1715,12 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
   return (
     <Show when={props.part.text.trim()}>
       <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3} marginTop={1} flexShrink={0}>
-        <markdown
+        <code
+          filetype="markdown"
           syntaxStyle={syntax()}
           streaming={!props.message.time.completed}
-          internalBlockMode="top-level"
+          drawUnstyledText={false}
           content={props.part.text.trim()}
-          tableOptions={{ style: "grid" }}
-          conceal={ctx.conceal()}
           fg={theme.markdownText}
           bg={theme.background}
         />
