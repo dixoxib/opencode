@@ -669,7 +669,7 @@ export const layer = Layer.effect(
         id: PartID.ascending(),
         messageID: msg.id,
         sessionID: msg.sessionID,
-        type: "compaction",
+        type: input.agent === "seam" ? "seam" as any : "compaction",
         auto: input.auto,
         overflow: input.overflow,
       })
