@@ -384,15 +384,13 @@ export const {
           const result = search(parts, event.properties.partID, (p) => p.id)
           if (!result.found) break
           touchPart(event.properties.sessionID, event.properties.partID)
+          const existing = parts[result.index][event.properties.field as keyof typeof parts[number]] as string | undefined
           setStore(
             "part",
             event.properties.messageID,
-            produce((draft) => {
-              const part = draft[result.index]
-              const field = event.properties.field as keyof typeof part
-              const existing = part[field] as string | undefined
-              ;(part[field] as string) = (existing ?? "") + event.properties.delta
-            }),
+            result.index,
+            event.properties.field as any,
+            (existing ?? "") + event.properties.delta,
           )
           break
         }
