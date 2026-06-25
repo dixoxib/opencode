@@ -378,15 +378,26 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
             if (part.text.trim().length > 0)
               assistantMessage.parts.push({
                 type: "text",
-                text: part.text,
+                text: `<reasoning>\n${part.text}\n</reasoning>`,
               })
             continue
           }
-          assistantMessage.parts.push({
-            type: "reasoning",
-            text: part.text,
-            providerMetadata: part.metadata,
-          })
+          // Check if this reasoning part is followed by a tool call in the same message
+          const partIndex = msg.parts.indexOf(part)
+          const nextPart = partIndex >= 0 ? msg.parts[partIndex + 1] : undefined
+          const pairedWithTool = nextPart?.type === "tool"
+          if (pairedWithTool) {
+            assistantMessage.parts.push({
+              type: "reasoning",
+              text: part.text,
+              providerMetadata: part.metadata,
+            })
+          } else {
+            assistantMessage.parts.push({
+              type: "text",
+              text: `<reasoning>\n${part.text}\n</reasoning>`,
+            })
+          }
         }
       }
       if (assistantMessage.parts.length > 0) {
