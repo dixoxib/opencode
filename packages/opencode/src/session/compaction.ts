@@ -471,7 +471,6 @@ export const layer = Layer.effect(
         `  Workspace root folder: ${ctx.worktree}`,
         `  Is directory a git repo: ${ctx.project.vcs === "git" ? "yes" : "no"}`,
         `  Platform: ${process.platform}`,
-        `  Today's date: ${new Date().toDateString()}`,
         `</env>`,
       ].join("\n")
       const msg: SessionV1.Assistant = {
