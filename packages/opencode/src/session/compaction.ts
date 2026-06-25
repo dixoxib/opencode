@@ -24,6 +24,7 @@ import { SessionMessage } from "@opencode-ai/core/session/message"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { EventV2 } from "@opencode-ai/core/event"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import { buildPrompt } from "@opencode-ai/core/session/compaction"
 
 export const Event = {
@@ -336,7 +337,7 @@ export const layer = Layer.effect(
     const pruneSeam = Effect.fn("SessionCompaction.pruneSeam")(function* (input: { sessionID: SessionID }) {
       const cfg = yield* config.get()
       if (cfg.seam?.prune === false || process.env["OPENCODE_SEAM_PRUNE"] === "false") return
-      const margin = cfg.seam?.prune_margin ?? 50_000
+      const margin = Number(Flag.OPENCODE_SEAM_PRUNE_MARGIN) || (cfg.seam?.prune_margin ?? 50_000)
 
       const msgs = yield* session
         .messages({ sessionID: input.sessionID })
