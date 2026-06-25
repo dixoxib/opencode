@@ -378,25 +378,34 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
             if (part.text.trim().length > 0)
               assistantMessage.parts.push({
                 type: "text",
-                text: `<reasoning>\n${part.text}\n</reasoning>`,
+                text: part.text,
               })
             continue
           }
-          // Check if this reasoning part is followed by a tool call in the same message
-          const partIndex = msg.parts.indexOf(part)
-          const nextPart = partIndex >= 0 ? msg.parts[partIndex + 1] : undefined
-          const pairedWithTool = nextPart?.type === "tool"
-          if (pairedWithTool) {
-            assistantMessage.parts.push({
-              type: "reasoning",
-              text: part.text,
-              providerMetadata: part.metadata,
-            })
-          } else {
-            assistantMessage.parts.push({
-              type: "text",
-              text: `<reasoning>\n${part.text}\n</reasoning>`,
-            })
+          assistantMessage.parts.push({
+            type: "reasoning",
+            text: part.text,
+            providerMetadata: part.metadata,
+          })
+        }
+      }
+      // DeepSeek API ignores reasoning from the last response (no tool calls follow).
+      // Wrap it into the text content so it survives context replay.
+      if (!differentModel && assistantMessage.parts.length > 0) {
+        const hasToolCall = assistantMessage.parts.some((p) => (p.type as string).startsWith("tool-"))
+        if (!hasToolCall) {
+          const reasoningPart = assistantMessage.parts.find((p) => p.type === "reasoning")
+          if (reasoningPart && "text" in reasoningPart) {
+            const textPart = assistantMessage.parts.find((p) => p.type === "text")
+            if (textPart && "text" in textPart) {
+              textPart.text = `<reasoning>\n${reasoningPart.text}\n</reasoning>\n\n${textPart.text}`
+            } else if (reasoningPart.text.trim().length > 0) {
+              assistantMessage.parts = assistantMessage.parts.map((p) =>
+                p.type === "reasoning"
+                  ? { type: "text", text: `<reasoning>\n${reasoningPart.text}\n</reasoning>` }
+                  : p,
+              )
+            }
           }
         }
       }
