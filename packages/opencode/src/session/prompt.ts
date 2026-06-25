@@ -1204,12 +1204,12 @@ export const layer = Layer.effect(
           }
 
           if (task?.type === "compaction" || task?.type === "seam") {
-            const compactionAgent = yield* agents.get("compaction")
+            const userAgent = yield* agents.get(lastUser.agent)
             const [compactionSystem] = yield* Effect.all([
               Effect.all([
                 sys.environment(model),
                 instruction.system().pipe(Effect.orDie),
-                sys.skills(compactionAgent).pipe(Effect.orDie),
+                sys.skills(userAgent).pipe(Effect.orDie),
               ]).pipe(Effect.map(([env, inst, skill]) => [...env, ...inst, ...(skill ? [skill] : [])])),
             ])
             const result = yield* compaction.process({
