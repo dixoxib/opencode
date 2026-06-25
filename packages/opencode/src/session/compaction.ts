@@ -313,6 +313,7 @@ export const layer = Layer.effect(
           if (part.state.status !== "completed") continue
           if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
           if (isMdOutput(part)) continue
+          if (part.state.output.length < (flags.pruneMinOutputChars ?? 1000)) continue
           if (part.state.time.compacted) break loop
           const estimate = Token.estimate(part.state.output)
           total += estimate
@@ -376,6 +377,7 @@ export const layer = Layer.effect(
           if (part.state.status !== "completed") continue
           if (part.state.time.compacted) continue
           if (isMdOutput(part)) continue
+          if (part.state.output.length < (flags.pruneMinOutputChars ?? 1000)) continue
           part.state.time.compacted = Date.now()
           yield* session.updatePart(part)
           pruned++

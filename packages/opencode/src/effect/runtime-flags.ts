@@ -51,6 +51,7 @@ export class Service extends ConfigService.Service<Service>()("@opencode/Runtime
   outputTokenMax: positiveInteger("OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"),
   maxOutputTokens: positiveInteger("OPENCODE_MAX_OUTPUT_TOKENS"),
   contextLimit: positiveInteger("OPENCODE_CONTEXT_LIMIT"),
+  pruneMinOutputChars: positiveInteger("OPENCODE_PRUNE_MIN_OUTPUT_CHARS"),
   bashDefaultTimeoutMs: positiveInteger("OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS"),
   experimentalNativeLlm: bool("OPENCODE_EXPERIMENTAL_NATIVE_LLM"),
   experimentalWebSockets: bool("OPENCODE_EXPERIMENTAL_WEBSOCKETS"),
