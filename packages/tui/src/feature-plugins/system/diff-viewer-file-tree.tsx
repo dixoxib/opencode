@@ -5,7 +5,8 @@ import { tint } from "../../context/theme"
 import { createEffect, createMemo, For, Match, Switch } from "solid-js"
 import { buildFileTree, flattenFileTree, type FileTreeItem, type FileTreeRow } from "./diff-viewer-file-tree-utils"
 import { Panel } from "./diff-viewer-ui"
-import { osc8FileLink } from "../../util/osc8"
+import open from "open"
+import path from "path"
 
 const FILE_TREE_STATUS_WIDTH = 2
 
@@ -80,10 +81,12 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
                 const status = () => fileTreeRowStatus(row, props.files, reviewed())
                 const name = () =>
                   Locale.truncate(row.name, Math.max(1, props.width - FILE_TREE_STATUS_WIDTH - prefix().length))
-                const linkName = () =>
-                  row.fileIndex !== undefined && props.directory
-                    ? osc8FileLink(props.files[row.fileIndex].file, props.directory)
-                    : name()
+                const onFileClick = () => {
+                  if (row.fileIndex === undefined || !props.directory) return
+                  const file = props.files[row.fileIndex].file
+                  const absolute = path.isAbsolute(file) ? file : path.join(props.directory, file)
+                  open("file://" + absolute).catch(() => {})
+                }
                 return (
                   <box
                     flexDirection="row"
@@ -106,8 +109,9 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
                                 : props.theme.text
                         }
                         wrapMode="none"
+                        onMouseUp={row.kind === "file" ? onFileClick : undefined}
                       >
-                        {linkName()}
+                        {name()}
                       </text>
                     </box>
                     <text

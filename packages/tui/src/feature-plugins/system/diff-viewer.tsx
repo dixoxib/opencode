@@ -18,7 +18,7 @@ import { DiffViewerFileTree } from "./diff-viewer-file-tree"
 import { Panel, PanelGroup, Separator } from "./diff-viewer-ui"
 import { DialogSelect } from "../../ui/dialog-select"
 import { getScrollAcceleration } from "../../util/scroll"
-import { osc8FileLink } from "../../util/osc8"
+import open from "open"
 import {
   allExpandedFileTreeDirectories,
   buildFileTree,
@@ -809,7 +809,17 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                               border={patchLeftBorder()}
                               borderColor={theme().border}
                             >
-                              <text fg={reviewed() ? theme().textMuted : theme().text}>{osc8FileLink(entry.file.file, directory())}</text>
+                              <text
+                                fg={reviewed() ? theme().textMuted : theme().text}
+                                onMouseUp={() => {
+                                  const absolute = path.isAbsolute(entry.file.file)
+                                    ? entry.file.file
+                                    : path.join(directory() ?? "", entry.file.file)
+                                  open("file://" + absolute).catch(() => {})
+                                }}
+                              >
+                                {entry.file.file}
+                              </text>
                               <box flexGrow={1} />
                               <text fg={reviewed() ? theme().textMuted : theme().diffAdded}>
                                 +{entry.file.additions}

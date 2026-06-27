@@ -64,7 +64,6 @@ import stripAnsi from "strip-ansi"
 import { usePromptRef } from "../../context/prompt"
 import { useEpilogue } from "../../context/epilogue"
 import { normalizePath } from "../../util/path"
-import { osc8FileLink } from "../../util/osc8"
 import { PermissionPrompt } from "./permission"
 import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
@@ -2124,7 +2123,6 @@ function Shell(props: ToolProps) {
 function Write(props: ToolProps) {
   const { theme, syntax } = useTheme()
   const pathFormatter = usePathFormatter()
-  const linkedPath = () => osc8FileLink(stringValue(props.input.filePath) ?? "", pathFormatter.path())
   const code = createMemo(() => {
     return stringValue(props.input.content) ?? ""
   })
@@ -2132,7 +2130,7 @@ function Write(props: ToolProps) {
   return (
     <Switch>
       <Match when={props.metadata.diagnostics !== undefined}>
-        <BlockTool title={"# Wrote " + linkedPath()} part={props.part}>
+        <BlockTool title={"# Wrote " + pathFormatter.format(stringValue(props.input.filePath))} part={props.part}>
           <line_number fg={theme.textMuted} minWidth={3} paddingRight={1}>
             <code
               conceal={false}
@@ -2152,7 +2150,7 @@ function Write(props: ToolProps) {
           complete={stringValue(props.input.filePath)}
           part={props.part}
         >
-          Write {linkedPath()}
+          Write {pathFormatter.format(stringValue(props.input.filePath))}
         </InlineTool>
       </Match>
     </Switch>
@@ -2175,8 +2173,6 @@ function Glob(props: ToolProps) {
 function Read(props: ToolProps) {
   const { theme } = useTheme()
   const pathFormatter = usePathFormatter()
-  const linkedFile = () => osc8FileLink(stringValue(props.input.filePath) ?? "", pathFormatter.path())
-  const linkedLoaded = (filepath: string) => osc8FileLink(filepath, pathFormatter.path())
   const isRunning = createMemo(() => props.part.state.status === "running")
   const loaded = createMemo(() => {
     if (props.part.state.status !== "completed") return []
@@ -2194,13 +2190,13 @@ function Read(props: ToolProps) {
         spinner={isRunning()}
         part={props.part}
       >
-        Read {linkedFile()} {input(props.input, ["filePath"])}
+        Read {pathFormatter.format(stringValue(props.input.filePath))} {input(props.input, ["filePath"])}
       </InlineTool>
       <For each={loaded()}>
         {(filepath) => (
           <box paddingLeft={3}>
             <text paddingLeft={3} fg={theme.textMuted}>
-              ↳ Loaded {linkedLoaded(filepath)}
+              ↳ Loaded {pathFormatter.format(filepath)}
             </text>
           </box>
         )}
@@ -2358,7 +2354,6 @@ function Edit(props: ToolProps) {
   const ctx = use()
   const { theme, syntax } = useTheme()
   const pathFormatter = usePathFormatter()
-  const linkedFile = () => osc8FileLink(stringValue(props.input.filePath) ?? "", pathFormatter.path())
 
   const view = createMemo(() => {
     const diffStyle = ctx.tui.diff_style
@@ -2374,7 +2369,7 @@ function Edit(props: ToolProps) {
   return (
     <Switch>
       <Match when={stringValue(props.metadata.diff) !== undefined}>
-        <BlockTool title={"← Edit " + linkedFile()} part={props.part}>
+        <BlockTool title={"← Edit " + pathFormatter.format(stringValue(props.input.filePath))} part={props.part}>
           <box paddingLeft={1}>
             <diff
               diff={diffContent()}
@@ -2401,7 +2396,7 @@ function Edit(props: ToolProps) {
       </Match>
       <Match when={true}>
         <InlineTool icon="←" pending="Preparing edit..." complete={stringValue(props.input.filePath)} part={props.part}>
-          Edit {linkedFile()} {input({ replaceAll: props.input.replaceAll })}
+          Edit {pathFormatter.format(stringValue(props.input.filePath))} {input({ replaceAll: props.input.replaceAll })}
         </InlineTool>
       </Match>
     </Switch>
@@ -2412,7 +2407,6 @@ function ApplyPatch(props: ToolProps) {
   const ctx = use()
   const { theme, syntax } = useTheme()
   const pathFormatter = usePathFormatter()
-  const linkedPath = (p: string) => osc8FileLink(p, pathFormatter.path())
 
   const files = createMemo(() => parseApplyPatchFiles(props.metadata.files))
 
@@ -2449,10 +2443,10 @@ function ApplyPatch(props: ToolProps) {
   }
 
   function title(file: { type: string; relativePath: string; filePath: string; deletions: number }) {
-    if (file.type === "delete") return "# Deleted " + linkedPath(file.relativePath)
-    if (file.type === "add") return "# Created " + linkedPath(file.relativePath)
-    if (file.type === "move") return "# Moved " + linkedPath(file.filePath) + " → " + linkedPath(file.relativePath)
-    return "← Patched " + linkedPath(file.relativePath)
+    if (file.type === "delete") return "# Deleted " + file.relativePath
+    if (file.type === "add") return "# Created " + file.relativePath
+    if (file.type === "move") return "# Moved " + pathFormatter.format(file.filePath) + " → " + file.relativePath
+    return "← Patched " + file.relativePath
   }
 
   return (
