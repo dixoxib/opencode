@@ -398,11 +398,11 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
           if (reasoningPart && "text" in reasoningPart) {
             const textPart = assistantMessage.parts.find((p) => p.type === "text")
             if (textPart && "text" in textPart) {
-              textPart.text = `--- BEGIN REASONING ---\n${reasoningPart.text}\n--- END REASONING ---\n\n${textPart.text}`
+              textPart.text = `${reasoningPart.text}\n\n---\n\n${textPart.text}`
             } else if (reasoningPart.text.trim().length > 0) {
               assistantMessage.parts = assistantMessage.parts.map((p) =>
                 p.type === "reasoning"
-                  ? { type: "text", text: `--- BEGIN REASONING ---\n${reasoningPart.text}\n--- END REASONING ---` }
+                  ? { type: "text", text: reasoningPart.text }
                   : p,
               )
             }
