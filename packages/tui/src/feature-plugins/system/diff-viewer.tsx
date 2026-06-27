@@ -18,6 +18,7 @@ import { DiffViewerFileTree } from "./diff-viewer-file-tree"
 import { Panel, PanelGroup, Separator } from "./diff-viewer-ui"
 import { DialogSelect } from "../../ui/dialog-select"
 import { getScrollAcceleration } from "../../util/scroll"
+import { osc8FileLink } from "../../util/osc8"
 import {
   allExpandedFileTreeDirectories,
   buildFileTree,
@@ -41,12 +42,6 @@ const FILE_TREE_WIDTH = 32
 const PLAIN_TEXT_FILETYPE = "opencode-plain-text"
 const WORKING_TREE_DIFF_CONTEXT_LINES = 12
 const KV_SHOW_FILE_TREE = "diff_viewer_show_file_tree"
-
-function osc8FileLink(file: string, directory?: string): string {
-  if (!directory) return file
-  const absolute = path.isAbsolute(file) ? file : path.join(directory, file)
-  return `\x1b]8;;file://${absolute}\x1b\\${file}\x1b]8;;\x1b\\`
-}
 const KV_SINGLE_PATCH = "diff_viewer_single_patch"
 const KV_VIEW = "diff_viewer_view"
 type DiffMode = "git" | "last-turn"
@@ -785,6 +780,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                     reviewedFileNames={reviewedFileNames()}
                     expandedNodes={expandedFileNodes()}
                     onRowClick={clickFileTreeRow}
+                    directory={directory()}
                   />
                 </Show>
 

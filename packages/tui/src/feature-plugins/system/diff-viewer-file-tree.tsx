@@ -5,6 +5,7 @@ import { tint } from "../../context/theme"
 import { createEffect, createMemo, For, Match, Switch } from "solid-js"
 import { buildFileTree, flattenFileTree, type FileTreeItem, type FileTreeRow } from "./diff-viewer-file-tree-utils"
 import { Panel } from "./diff-viewer-ui"
+import { osc8FileLink } from "../../util/osc8"
 
 const FILE_TREE_STATUS_WIDTH = 2
 
@@ -32,6 +33,7 @@ export type DiffViewerFileTreeProps = {
   readonly reviewedFileNames?: ReadonlySet<string>
   readonly expandedNodes?: ReadonlySet<number>
   readonly onRowClick?: (row: FileTreeRow) => void
+  readonly directory?: string
 }
 
 export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
@@ -78,6 +80,10 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
                 const status = () => fileTreeRowStatus(row, props.files, reviewed())
                 const name = () =>
                   Locale.truncate(row.name, Math.max(1, props.width - FILE_TREE_STATUS_WIDTH - prefix().length))
+                const linkName = () =>
+                  row.fileIndex !== undefined && props.directory
+                    ? osc8FileLink(props.files[row.fileIndex].file, props.directory)
+                    : name()
                 return (
                   <box
                     flexDirection="row"
@@ -101,7 +107,7 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
                         }
                         wrapMode="none"
                       >
-                        {name()}
+                        {linkName()}
                       </text>
                     </box>
                     <text
