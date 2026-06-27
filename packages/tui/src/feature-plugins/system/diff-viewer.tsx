@@ -41,6 +41,12 @@ const FILE_TREE_WIDTH = 32
 const PLAIN_TEXT_FILETYPE = "opencode-plain-text"
 const WORKING_TREE_DIFF_CONTEXT_LINES = 12
 const KV_SHOW_FILE_TREE = "diff_viewer_show_file_tree"
+
+function osc8FileLink(file: string, directory?: string): string {
+  if (!directory) return file
+  const absolute = path.isAbsolute(file) ? file : path.join(directory, file)
+  return `\x1b]8;;file://${absolute}\x1b\\${file}\x1b]8;;\x1b\\`
+}
 const KV_SINGLE_PATCH = "diff_viewer_single_patch"
 const KV_VIEW = "diff_viewer_view"
 type DiffMode = "git" | "last-turn"
@@ -105,6 +111,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
       directory: sessionID ? props.api.state.session.get(sessionID)?.directory : undefined,
     }
   })
+  const directory = createMemo(() => diffInput().directory)
   const [diff] = createResource(diffInput, async (input) => {
     if (input.mode === "last-turn") {
       const sessionID = input.sessionID
@@ -806,7 +813,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                               border={patchLeftBorder()}
                               borderColor={theme().border}
                             >
-                              <text fg={reviewed() ? theme().textMuted : theme().text}>{entry.file.file}</text>
+                              <text fg={reviewed() ? theme().textMuted : theme().text}>{osc8FileLink(entry.file.file, directory())}</text>
                               <box flexGrow={1} />
                               <text fg={reviewed() ? theme().textMuted : theme().diffAdded}>
                                 +{entry.file.additions}
