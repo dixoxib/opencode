@@ -2156,7 +2156,9 @@ function Write(props: ToolProps) {
           complete={stringValue(props.input.filePath)}
           part={props.part}
         >
-          Write <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>{pathFormatter.format(filePath())}</text>
+          <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
+            Write {pathFormatter.format(filePath())}
+          </text>
         </InlineTool>
       </Match>
     </Switch>
@@ -2198,7 +2200,9 @@ function Read(props: ToolProps) {
         spinner={isRunning()}
         part={props.part}
       >
-        Read <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>{pathFormatter.format(filePath())}</text> {input(props.input, ["filePath"])}
+        <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
+          Read {pathFormatter.format(filePath())}
+        </text> {input(props.input, ["filePath"])}
       </InlineTool>
       <For each={loaded()}>
         {(filepath) => (
@@ -2412,7 +2416,9 @@ function Edit(props: ToolProps) {
       </Match>
       <Match when={true}>
         <InlineTool icon="←" pending="Preparing edit..." complete={stringValue(props.input.filePath)} part={props.part}>
-          Edit <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>{pathFormatter.format(filePath())}</text> {input({ replaceAll: props.input.replaceAll })}
+          <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
+            Edit {pathFormatter.format(filePath())}
+          </text> {input({ replaceAll: props.input.replaceAll })}
         </InlineTool>
       </Match>
     </Switch>
