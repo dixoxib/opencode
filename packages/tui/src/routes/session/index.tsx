@@ -64,6 +64,7 @@ import stripAnsi from "strip-ansi"
 import { usePromptRef } from "../../context/prompt"
 import { useEpilogue } from "../../context/epilogue"
 import { normalizePath } from "../../util/path"
+import open from "open"
 import { PermissionPrompt } from "./permission"
 import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
@@ -2123,14 +2124,19 @@ function Shell(props: ToolProps) {
 function Write(props: ToolProps) {
   const { theme, syntax } = useTheme()
   const pathFormatter = usePathFormatter()
+  const filePath = () => stringValue(props.input.filePath) ?? ""
+  const absolutePath = () => path.isAbsolute(filePath()) ? filePath() : path.join(pathFormatter.path(), filePath())
   const code = createMemo(() => {
     return stringValue(props.input.content) ?? ""
   })
 
   return (
     <Switch>
-      <Match when={props.metadata.diagnostics !== undefined}>
-        <BlockTool title={"# Wrote " + pathFormatter.format(stringValue(props.input.filePath))} part={props.part}>
+        <Match when={props.metadata.diagnostics !== undefined}>
+        <BlockTool title={"# Wrote"} part={props.part}>
+          <text fg={theme.text} onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
+            {pathFormatter.format(filePath())}
+          </text>
           <line_number fg={theme.textMuted} minWidth={3} paddingRight={1}>
             <code
               conceal={false}
@@ -2150,7 +2156,7 @@ function Write(props: ToolProps) {
           complete={stringValue(props.input.filePath)}
           part={props.part}
         >
-          Write {pathFormatter.format(stringValue(props.input.filePath))}
+          Write <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>{pathFormatter.format(filePath())}</text>
         </InlineTool>
       </Match>
     </Switch>
@@ -2173,6 +2179,8 @@ function Glob(props: ToolProps) {
 function Read(props: ToolProps) {
   const { theme } = useTheme()
   const pathFormatter = usePathFormatter()
+  const filePath = () => stringValue(props.input.filePath) ?? ""
+  const absolutePath = () => path.isAbsolute(filePath()) ? filePath() : path.join(pathFormatter.path(), filePath())
   const isRunning = createMemo(() => props.part.state.status === "running")
   const loaded = createMemo(() => {
     if (props.part.state.status !== "completed") return []
@@ -2190,12 +2198,15 @@ function Read(props: ToolProps) {
         spinner={isRunning()}
         part={props.part}
       >
-        Read {pathFormatter.format(stringValue(props.input.filePath))} {input(props.input, ["filePath"])}
+        Read <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>{pathFormatter.format(filePath())}</text> {input(props.input, ["filePath"])}
       </InlineTool>
       <For each={loaded()}>
         {(filepath) => (
           <box paddingLeft={3}>
-            <text paddingLeft={3} fg={theme.textMuted}>
+            <text paddingLeft={3} fg={theme.textMuted} onMouseUp={() => {
+              const abs = path.isAbsolute(filepath) ? filepath : path.join(pathFormatter.path(), filepath)
+              open("file://" + abs).catch(() => {})
+            }}>
               ↳ Loaded {pathFormatter.format(filepath)}
             </text>
           </box>
@@ -2354,6 +2365,8 @@ function Edit(props: ToolProps) {
   const ctx = use()
   const { theme, syntax } = useTheme()
   const pathFormatter = usePathFormatter()
+  const filePath = () => stringValue(props.input.filePath) ?? ""
+  const absolutePath = () => path.isAbsolute(filePath()) ? filePath() : path.join(pathFormatter.path(), filePath())
 
   const view = createMemo(() => {
     const diffStyle = ctx.tui.diff_style
@@ -2369,7 +2382,10 @@ function Edit(props: ToolProps) {
   return (
     <Switch>
       <Match when={stringValue(props.metadata.diff) !== undefined}>
-        <BlockTool title={"← Edit " + pathFormatter.format(stringValue(props.input.filePath))} part={props.part}>
+        <BlockTool title="← Edit" part={props.part}>
+          <text fg={theme.text} onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
+            {pathFormatter.format(filePath())}
+          </text>
           <box paddingLeft={1}>
             <diff
               diff={diffContent()}
@@ -2396,7 +2412,7 @@ function Edit(props: ToolProps) {
       </Match>
       <Match when={true}>
         <InlineTool icon="←" pending="Preparing edit..." complete={stringValue(props.input.filePath)} part={props.part}>
-          Edit {pathFormatter.format(stringValue(props.input.filePath))} {input({ replaceAll: props.input.replaceAll })}
+          Edit <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>{pathFormatter.format(filePath())}</text> {input({ replaceAll: props.input.replaceAll })}
         </InlineTool>
       </Match>
     </Switch>
@@ -2407,6 +2423,7 @@ function ApplyPatch(props: ToolProps) {
   const ctx = use()
   const { theme, syntax } = useTheme()
   const pathFormatter = usePathFormatter()
+  const absoluteFor = (p: string) => path.isAbsolute(p) ? p : path.join(pathFormatter.path(), p)
 
   const files = createMemo(() => parseApplyPatchFiles(props.metadata.files))
 
@@ -2443,10 +2460,10 @@ function ApplyPatch(props: ToolProps) {
   }
 
   function title(file: { type: string; relativePath: string; filePath: string; deletions: number }) {
-    if (file.type === "delete") return "# Deleted " + file.relativePath
-    if (file.type === "add") return "# Created " + file.relativePath
-    if (file.type === "move") return "# Moved " + pathFormatter.format(file.filePath) + " → " + file.relativePath
-    return "← Patched " + file.relativePath
+    if (file.type === "delete") return "# Deleted"
+    if (file.type === "add") return "# Created"
+    if (file.type === "move") return "# Moved"
+    return "← Patched"
   }
 
   return (
@@ -2455,6 +2472,9 @@ function ApplyPatch(props: ToolProps) {
         <For each={files()}>
           {(file) => (
             <BlockTool title={title(file)} part={props.part}>
+              <text fg={theme.text} onMouseUp={() => open("file://" + absoluteFor(file.filePath)).catch(() => {})}>
+                {file.relativePath}
+              </text>
               <Show
                 when={file.type !== "delete"}
                 fallback={
