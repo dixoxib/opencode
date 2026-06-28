@@ -426,7 +426,7 @@ export const layer = Layer.effect(
         }
       }
 
-      const agent = yield* agents.get("compaction")
+      const agent = yield* agents.get(isSeam ? "seam" : "compaction")
       const model = agent.model
         ? yield* provider.getModel(agent.model.providerID, agent.model.modelID).pipe(Effect.orDie)
         : yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie)
@@ -571,7 +571,7 @@ export const layer = Layer.effect(
           }
         }
 
-        if (!replay) {
+        if (!replay && !isSeam) {
           const info = yield* provider.getProvider(userMessage.model.providerID)
           if (
             (yield* plugin.trigger(
