@@ -815,8 +815,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                                   const absolute = path.isAbsolute(entry.file.file)
                                     ? entry.file.file
                                     : path.join(directory() ?? "", entry.file.file)
-                                  const line = entry.file.patch?.match(/^@@ -\d+(?:,\d+)? \+(\d+)/m)?.[1]
-                                  open("file://" + absolute + (line ? ":" + line : "")).catch(() => {})
+                                  open("file://" + absolute).catch(() => {})
                                 }}
                               >
                                 {entry.file.file}

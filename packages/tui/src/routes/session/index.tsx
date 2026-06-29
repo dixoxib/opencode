@@ -2385,10 +2385,7 @@ function Edit(props: ToolProps) {
     <Switch>
       <Match when={stringValue(props.metadata.diff) !== undefined}>
         <BlockTool title="← Edit" part={props.part}>
-          <text fg={theme.text} onMouseUp={() => {
-            const line = diffContent().match(/^@@ -\d+(?:,\d+)? \+(\d+)/m)?.[1]
-            open("file://" + absolutePath() + (line ? ":" + line : "")).catch(() => {})
-          }}>
+          <text fg={theme.text} onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
             {pathFormatter.format(filePath())}
           </text>
           <box paddingLeft={1}>
@@ -2477,10 +2474,7 @@ function ApplyPatch(props: ToolProps) {
         <For each={files()}>
           {(file) => (
             <BlockTool title={title(file)} part={props.part}>
-              <text fg={theme.text} onMouseUp={() => {
-                const line = file.patch?.match(/^@@ -\d+(?:,\d+)? \+(\d+)/m)?.[1]
-                open("file://" + absoluteFor(file.filePath) + (line ? ":" + line : "")).catch(() => {})
-              }}>
+              <text fg={theme.text} onMouseUp={() => open("file://" + absoluteFor(file.filePath)).catch(() => {})}>
                 {file.relativePath}
               </text>
               <Show
