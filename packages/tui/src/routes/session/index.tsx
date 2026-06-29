@@ -2474,7 +2474,10 @@ function ApplyPatch(props: ToolProps) {
         <For each={files()}>
           {(file) => (
             <BlockTool title={title(file)} part={props.part}>
-              <text fg={theme.text} onMouseUp={() => open("file://" + absoluteFor(file.filePath)).catch(() => {})}>
+              <text fg={theme.text} onMouseUp={() => {
+                const line = file.patch?.match(/^@@ -\d+(?:,\d+)? \+(\d+)/m)?.[1]
+                open("file://" + absoluteFor(file.filePath) + (line ? ":" + line : "")).catch(() => {})
+              }}>
                 {file.relativePath}
               </text>
               <Show
