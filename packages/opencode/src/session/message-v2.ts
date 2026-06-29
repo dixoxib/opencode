@@ -206,14 +206,22 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
     return { type: "json", value: output as never }
   }
 
+  let lastReasoning: string | undefined
   for (const msg of input) {
     if (msg.parts.length === 0) continue
-
     if (msg.info.role === "user") {
       const userMessage: UIMessage = {
         id: msg.info.id,
         role: "user",
         parts: [],
+      }
+      // Prepend last assistant reasoning to the user message
+      if (lastReasoning) {
+        userMessage.parts.push({
+          type: "text",
+          text: `--- Your last reasoning ---\n${lastReasoning}\n--- End your last reasoning ---`,
+        })
+        lastReasoning = undefined
       }
       for (const part of msg.parts) {
         // User message parts should never be empty
@@ -389,28 +397,17 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
           })
         }
       }
-      // DeepSeek API ignores reasoning from the last response (no tool calls follow).
-      // Wrap it into the text content so it survives context replay.
-      if (!differentModel && assistantMessage.parts.length > 0) {
-        const hasToolCall = assistantMessage.parts.some((p) => (p.type as string).startsWith("tool-"))
-        if (!hasToolCall) {
-          const reasoningPart = assistantMessage.parts.find((p) => p.type === "reasoning")
-          if (reasoningPart && "text" in reasoningPart) {
-            const textPart = assistantMessage.parts.find((p) => p.type === "text")
-            if (textPart && "text" in textPart) {
-              textPart.text = `${reasoningPart.text}\n\n---\n\n${textPart.text}`
-            } else if (reasoningPart.text.trim().length > 0) {
-              assistantMessage.parts = assistantMessage.parts.map((p) =>
-                p.type === "reasoning"
-                  ? { type: "text", text: reasoningPart.text }
-                  : p,
-              )
-            }
-          }
-        }
-      }
       if (assistantMessage.parts.length > 0) {
         result.push(assistantMessage)
+
+        // Track standalone reasoning (no tool calls) for next user message
+        if (!differentModel && !toolNames.size) {
+          const reasoningPart = msg.parts.find((p) => p.type === "reasoning")
+          if (reasoningPart && reasoningPart.text.trim()) {
+            lastReasoning = reasoningPart.text.trim()
+          }
+        }
+
         // Inject pending media as a user message for providers that don't support
         // media (images, PDFs) in tool results
         if (media.length > 0) {
