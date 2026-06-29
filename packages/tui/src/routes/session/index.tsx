@@ -2385,7 +2385,10 @@ function Edit(props: ToolProps) {
     <Switch>
       <Match when={stringValue(props.metadata.diff) !== undefined}>
         <BlockTool title="← Edit" part={props.part}>
-          <text fg={theme.text} onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
+          <text fg={theme.text} onMouseUp={() => {
+            const line = diffContent().match(/^@@ -\d+(?:,\d+)? \+(\d+)/m)?.[1]
+            open("file://" + absolutePath() + (line ? ":" + line : "")).catch(() => {})
+          }}>
             {pathFormatter.format(filePath())}
           </text>
           <box paddingLeft={1}>
