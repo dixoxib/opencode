@@ -1207,10 +1207,9 @@ export const layer = Layer.effect(
             const userAgent = yield* agents.get(lastUser.agent)
             const [compactionSystem] = yield* Effect.all([
               Effect.all([
-                sys.environment(model),
                 instruction.system().pipe(Effect.orDie),
                 sys.skills(userAgent).pipe(Effect.orDie),
-              ]).pipe(Effect.map(([env, inst, skill]) => [...env, ...inst, ...(skill ? [skill] : [])])),
+              ]).pipe(Effect.map(([inst, skill]) => [...inst, ...(skill ? [skill] : [])])),
             ])
             const result = yield* compaction.process({
               messages: msgs,
@@ -1320,13 +1319,12 @@ export const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            const [skills, env, instructions, modelMsgs] = yield* Effect.all([
+            const [skills, instructions, modelMsgs] = yield* Effect.all([
               sys.skills(agent),
-              sys.environment(model),
               instruction.system().pipe(Effect.orDie),
               MessageV2.toModelMessagesEffect(msgs, model),
             ])
-            const system = [...env, ...instructions, ...(skills ? [skills] : [])]
+            const system = [...instructions, ...(skills ? [skills] : [])]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             const result = yield* handle.process({
