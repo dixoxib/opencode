@@ -2155,10 +2155,9 @@ function Write(props: ToolProps) {
           pending="Preparing write..."
           complete={stringValue(props.input.filePath)}
           part={props.part}
+          onClick={() => open("file://" + absolutePath()).catch(() => {})}
         >
-          <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
-            Write {pathFormatter.format(filePath())}
-          </text>
+          Write {pathFormatter.format(filePath())}
         </InlineTool>
       </Match>
     </Switch>
@@ -2193,17 +2192,16 @@ function Read(props: ToolProps) {
   })
   return (
     <>
-      <InlineTool
-        icon="→"
-        pending="Reading file..."
-        complete={stringValue(props.input.filePath)}
-        spinner={isRunning()}
-        part={props.part}
-      >
-        <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
+        <InlineTool
+          icon="→"
+          pending="Reading file..."
+          complete={stringValue(props.input.filePath)}
+          spinner={isRunning()}
+          part={props.part}
+          onClick={() => open("file://" + absolutePath()).catch(() => {})}
+        >
           Read {pathFormatter.format(filePath())} {input(props.input, ["filePath"])}
-        </text>
-      </InlineTool>
+        </InlineTool>
       <For each={loaded()}>
         {(filepath) => (
           <box paddingLeft={3}>
@@ -2415,10 +2413,8 @@ function Edit(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="←" pending="Preparing edit..." complete={stringValue(props.input.filePath)} part={props.part}>
-          <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
-            Edit {pathFormatter.format(filePath())} {input({ replaceAll: props.input.replaceAll })}
-          </text>
+        <InlineTool icon="←" pending="Preparing edit..." complete={stringValue(props.input.filePath)} part={props.part} onClick={() => open("file://" + absolutePath()).catch(() => {})}>
+          Edit {pathFormatter.format(filePath())} {input({ replaceAll: props.input.replaceAll })}
         </InlineTool>
       </Match>
     </Switch>
