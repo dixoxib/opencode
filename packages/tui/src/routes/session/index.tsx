@@ -2201,8 +2201,8 @@ function Read(props: ToolProps) {
         part={props.part}
       >
         <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
-          Read {pathFormatter.format(filePath())}
-        </text> {input(props.input, ["filePath"])}
+          Read {pathFormatter.format(filePath())} {input(props.input, ["filePath"])}
+        </text>
       </InlineTool>
       <For each={loaded()}>
         {(filepath) => (
@@ -2417,8 +2417,8 @@ function Edit(props: ToolProps) {
       <Match when={true}>
         <InlineTool icon="←" pending="Preparing edit..." complete={stringValue(props.input.filePath)} part={props.part}>
           <text onMouseUp={() => open("file://" + absolutePath()).catch(() => {})}>
-            Edit {pathFormatter.format(filePath())}
-          </text> {input({ replaceAll: props.input.replaceAll })}
+            Edit {pathFormatter.format(filePath())} {input({ replaceAll: props.input.replaceAll })}
+          </text>
         </InlineTool>
       </Match>
     </Switch>
