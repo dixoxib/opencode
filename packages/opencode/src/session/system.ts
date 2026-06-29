@@ -51,10 +51,8 @@ export const layer = Layer.effect(
     const locations = yield* LocationServiceMap
 
     return Service.of({
-      skills: Effect.fn("SystemPrompt.skills")(function* (agent: Agent.Info) {
-        if (Permission.disabled(["skill"], agent.permission).has("skill")) return
-
-        const list = yield* skill.available(agent)
+      skills: Effect.fn("SystemPrompt.skills")(function* (_agent: Agent.Info) {
+        const list = yield* skill.available()
 
         return [
           "Skills provide specialized instructions and workflows for specific tasks.",
