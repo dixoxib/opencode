@@ -264,6 +264,7 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
     }
 
     if (msg.info.role === "assistant") {
+      const msgToolNames = new Set<string>()
       const differentModel = `${model.providerID}/${model.id}` !== `${msg.info.providerID}/${msg.info.modelID}`
       const media: Array<{ mime: string; url: string; filename?: string }> = []
 
@@ -311,6 +312,7 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
           })
         if (part.type === "tool") {
           toolNames.add(part.tool)
+          msgToolNames.add(part.tool)
           if (part.state.status === "completed") {
             const outputText = part.state.time.compacted
               ? "[Old tool result content cleared]"
@@ -401,7 +403,7 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
         result.push(assistantMessage)
 
         // Track standalone reasoning (no tool calls) for next user message
-        if (!differentModel && !toolNames.size) {
+        if (!differentModel && !msgToolNames.size) {
           const reasoningPart = msg.parts.find((p) => p.type === "reasoning")
           if (reasoningPart && reasoningPart.text.trim()) {
             lastReasoning = reasoningPart.text.trim()
