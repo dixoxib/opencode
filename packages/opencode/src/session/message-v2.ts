@@ -399,11 +399,9 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
           if (reasoningPart && reasoningPart.text.trim()) {
             const lastUser = result.findLast((m) => m.role === "user")
             if (lastUser) {
-              // Remove previous reasoning block — only keep the most recent
-              lastUser.parts = lastUser.parts.filter((p) => !("text" in p && p.text?.startsWith("--- Your last reasoning ---")))
               lastUser.parts.push({
                 type: "text",
-                text: `--- Your last reasoning ---\n${reasoningPart.text.trim()}\n--- End your last reasoning ---`,
+                text: `--- reasoning ---\n${reasoningPart.text.trim()}\n--- end reasoning ---`,
               })
             }
           }
