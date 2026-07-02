@@ -404,7 +404,7 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
                 role: "user" as const,
                 parts: [{
                   type: "text" as const,
-                  text: `--- reasoning ---\n${reasoningPart.text.trim()}\n--- end reasoning ---`,
+                  text: `--- preserved reasoning ---\n${reasoningPart.text.trim()}\n--- end preserved reasoning ---`,
                 }],
               })
             }
