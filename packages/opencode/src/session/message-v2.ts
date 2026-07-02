@@ -404,7 +404,7 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
                 role: "user" as const,
                 parts: [{
                   type: "text" as const,
-                  text: `--- preserved reasoning ---\n${reasoningPart.text.trim()}\n--- end preserved reasoning ---`,
+                  text: `--- your reasoning (preserved copy) ---\n${reasoningPart.text.trim()}\n---`,
                 }],
               })
             }
@@ -578,6 +578,13 @@ export function filterCompacted(msgs: Iterable<WithParts>) {
       break
     if (msg.info.role === "assistant" && (msg.info.summary || msg.info.mode === "seam") && msg.info.finish && !msg.info.error)
       completed.add(msg.info.parentID)
+  }
+  // Remove seam user messages that weren't caught by the forward pass
+  // (completed is populated by the assistant AFTER the user in chronological order)
+  for (let i = result.length - 1; i >= 0; i--) {
+    if (result[i].info.role === "user" && result[i].info.agent === "seam") {
+      result.splice(i, 1)
+    }
   }
   result.reverse()
   const compactionIndex = result.findLastIndex(
