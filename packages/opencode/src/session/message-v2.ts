@@ -206,7 +206,6 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
     return { type: "json", value: output as never }
   }
 
-  let lastReasoning: string | undefined
   for (const msg of input) {
     if (msg.parts.length === 0) continue
     if (msg.info.role === "user") {
@@ -214,14 +213,6 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
         id: msg.info.id,
         role: "user",
         parts: [],
-      }
-      // Prepend last assistant reasoning to the user message
-      if (lastReasoning) {
-        userMessage.parts.push({
-          type: "text",
-          text: `--- Your last reasoning ---\n${lastReasoning}\n--- End your last reasoning ---`,
-        })
-        lastReasoning = undefined
       }
       for (const part of msg.parts) {
         // User message parts should never be empty
@@ -402,11 +393,17 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
       if (assistantMessage.parts.length > 0) {
         result.push(assistantMessage)
 
-        // Track standalone reasoning (no tool calls) for next user message
+        // Append standalone reasoning to the preceding user message (preserves chronological order)
         if (!differentModel && !msgToolNames.size) {
           const reasoningPart = msg.parts.find((p) => p.type === "reasoning")
           if (reasoningPart && reasoningPart.text.trim()) {
-            lastReasoning = reasoningPart.text.trim()
+            const lastUser = result.findLast((m) => m.role === "user")
+            if (lastUser) {
+              lastUser.parts.push({
+                type: "text",
+                text: `--- Your last reasoning ---\n${reasoningPart.text.trim()}\n--- End your last reasoning ---`,
+              })
+            }
           }
         }
 
