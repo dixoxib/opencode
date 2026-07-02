@@ -393,15 +393,19 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
       if (assistantMessage.parts.length > 0) {
         result.push(assistantMessage)
 
-        // Append standalone reasoning to the preceding user message (preserves chronological order)
+        // Inject standalone reasoning as synthetic user message (chronological: user → reasoning → assistant)
         if (!differentModel && !msgToolNames.size) {
           const reasoningPart = msg.parts.find((p) => p.type === "reasoning")
           if (reasoningPart && reasoningPart.text.trim()) {
             const lastUser = result.findLast((m) => m.role === "user")
             if (lastUser) {
-              lastUser.parts.push({
-                type: "text",
-                text: `--- reasoning ---\n${reasoningPart.text.trim()}\n--- end reasoning ---`,
+              result.splice(result.indexOf(lastUser) + 1, 0, {
+                id: MessageID.ascending(),
+                role: "user" as const,
+                parts: [{
+                  type: "text" as const,
+                  text: `--- reasoning ---\n${reasoningPart.text.trim()}\n--- end reasoning ---`,
+                }],
               })
             }
           }
