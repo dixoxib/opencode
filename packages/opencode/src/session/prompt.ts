@@ -1216,6 +1216,12 @@ export const layer = Layer.effect(
             sys.skills(agent).pipe(Effect.orDie),
           ]).pipe(Effect.map(([inst, skill]) => [...inst, ...(skill ? [skill] : [])])))
 
+          const compactionTools = yield* registry.tools({
+            modelID: ModelV2.ID.make(model.api.id),
+            providerID: model.providerID,
+            agent,
+          })
+
           if (task?.type === "compaction" || task?.type === "seam") {
             const result = yield* compaction.process({
               messages: msgs,
@@ -1225,6 +1231,7 @@ export const layer = Layer.effect(
               overflow: task.overflow,
               system,
               agent,
+              tools: Object.fromEntries(compactionTools.map((t) => [t.id, {}])),
             })
             if (result === "stop") break
             continue
