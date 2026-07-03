@@ -185,6 +185,8 @@ export interface Interface {
     auto: boolean
     overflow?: boolean
     system?: string[]
+    agent?: Agent.Info
+    tools?: Record<string, unknown>
   }) => Effect.Effect<"continue" | "stop">
   readonly create: (input: {
     sessionID: SessionID
@@ -392,6 +394,8 @@ export const layer = Layer.effect(
       auto: boolean
       overflow?: boolean
       system?: string[]
+      agent?: Agent.Info
+      tools?: Record<string, unknown>
     }) {
       const parent = input.messages.findLast((m) => m.info.id === input.parentID)
       if (!parent || parent.info.role !== "user") {
@@ -500,9 +504,9 @@ export const layer = Layer.effect(
       })
       const result = yield* processor.process({
         user: userMessage,
-        agent,
+        agent: input.agent ?? agent,
         sessionID: input.sessionID,
-        tools: {},
+        tools: (input.tools ?? {}) as any,
         system: input.system ?? [isSeam ? SEAM_INSTRUCTIONS : COMPACTION_INSTRUCTIONS],
         messages: [
           ...modelMessages,
