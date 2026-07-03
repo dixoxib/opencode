@@ -1224,6 +1224,7 @@ export const layer = Layer.effect(
               auto: task.auto,
               overflow: task.overflow,
               system,
+              agent,
             })
             if (result === "stop") break
             continue
