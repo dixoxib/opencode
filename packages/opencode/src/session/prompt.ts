@@ -1203,21 +1203,27 @@ export const layer = Layer.effect(
             continue
           }
 
+          const agent = yield* agents.get(lastUser.agent)
+          if (!agent) {
+            const available = (yield* agents.list()).filter((a) => !a.hidden).map((a) => a.name)
+            const hint = available.length ? ` Available agents: ${available.join(", ")}` : ""
+            const error = new NamedError.Unknown({ message: `Agent not found: "${lastUser.agent}".${hint}` })
+            yield* events.publish(Session.Event.Error, { sessionID, error: error.toObject() })
+            throw error
+          }
+          const system = (yield* Effect.all([
+            instruction.system().pipe(Effect.orDie),
+            sys.skills(agent).pipe(Effect.orDie),
+          ]).pipe(Effect.map(([inst, skill]) => [...inst, ...(skill ? [skill] : [])])))
+
           if (task?.type === "compaction" || task?.type === "seam") {
-            const userAgent = yield* agents.get(lastUser.agent)
-            const [compactionSystem] = yield* Effect.all([
-              Effect.all([
-                instruction.system().pipe(Effect.orDie),
-                sys.skills(userAgent).pipe(Effect.orDie),
-              ]).pipe(Effect.map(([inst, skill]) => [...inst, ...(skill ? [skill] : [])])),
-            ])
             const result = yield* compaction.process({
               messages: msgs,
               parentID: lastUser.id,
               sessionID,
               auto: task.auto,
               overflow: task.overflow,
-              system: compactionSystem,
+              system,
             })
             if (result === "stop") break
             continue
@@ -1233,14 +1239,6 @@ export const layer = Layer.effect(
             continue
           }
 
-          const agent = yield* agents.get(lastUser.agent)
-          if (!agent) {
-            const available = (yield* agents.list()).filter((a) => !a.hidden).map((a) => a.name)
-            const hint = available.length ? ` Available agents: ${available.join(", ")}` : ""
-            const error = new NamedError.Unknown({ message: `Agent not found: "${lastUser.agent}".${hint}` })
-            yield* events.publish(Session.Event.Error, { sessionID, error: error.toObject() })
-            throw error
-          }
           const maxSteps = agent.steps ?? Infinity
           const isLastStep = step >= maxSteps
           msgs = yield* SessionReminders.apply({ messages: msgs, agent, session }).pipe(
@@ -1319,12 +1317,7 @@ export const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            const [skills, instructions, modelMsgs] = yield* Effect.all([
-              sys.skills(agent),
-              instruction.system().pipe(Effect.orDie),
-              MessageV2.toModelMessagesEffect(msgs, model),
-            ])
-            const system = [...instructions, ...(skills ? [skills] : [])]
+            const modelMsgs = yield* MessageV2.toModelMessagesEffect(msgs, model)
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             const result = yield* handle.process({
