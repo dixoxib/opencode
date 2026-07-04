@@ -1,6 +1,6 @@
 export * as SessionCompaction from "./compaction"
 
-import { LLM, LLMError, LLMEvent, Message, type LLMRequest, type Model } from "@opencode-ai/llm"
+import { LLM, LLMError, LLMEvent, Message, isContextOverflowFailure, type LLMRequest, type Model } from "@opencode-ai/llm"
 import { DateTime, Effect, Stream } from "effect"
 import type { Config } from "../config"
 import type { EventV2 } from "../event"
@@ -13,6 +13,7 @@ const DEFAULT_BUFFER = 20_000
 const DEFAULT_KEEP_TOKENS = 8_000
 const TOOL_OUTPUT_MAX_CHARS = 2_000
 const SUMMARY_OUTPUT_TOKENS = 4_096
+const SUMMARY_OUTPUT_MIN = 512
 const SUMMARY_TEMPLATE = `Output exactly the Markdown structure shown inside <template> and keep the section order unchanged. Do not include the <template> tags in your response.
 <template>
 ## Goal
@@ -181,12 +182,14 @@ export const make = (dependencies: Dependencies) => {
     const selected = select(input.entries, config.tokens)
     const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
     if (!selected || (selected.head.length === 0 && previousSummary?.type !== "compaction")) return false
+    // Prefix-preservation: the conversation is carried verbatim as the real request messages
+    // (byte-identical to the main turn) so the trailing instruction embeds no history. Any prior
+    // summary/recent already lives in those messages as the rendered compaction checkpoint.
     const summaryPrompt = buildPrompt({
       previousSummary: previousSummary?.type === "compaction" ? previousSummary.summary : undefined,
-      context: [previousSummary?.type === "compaction" ? previousSummary.recent : "", selected.head].filter(Boolean),
+      context: [],
     })
     const summaryOutput = Math.min(output || SUMMARY_OUTPUT_TOKENS, SUMMARY_OUTPUT_TOKENS)
-    if (Token.estimate(summaryPrompt) > context - summaryOutput) return false
     const messageID = SessionMessage.ID.create()
     yield* dependencies.events.publish(SessionEvent.Compaction.Started, {
       sessionID: input.sessionID,
@@ -195,28 +198,53 @@ export const make = (dependencies: Dependencies) => {
       reason: "auto",
     })
 
-    const chunks: string[] = []
-    let failed = false
-    const summarized = yield* dependencies.llm
-      .stream(
-        LLM.request({
-          model: input.model,
-          messages: [Message.user(summaryPrompt)],
-          tools: [],
-          generation: { maxTokens: summaryOutput },
-        }),
-      )
-      .pipe(
-        Stream.runForEach((event) => {
-          if (LLMEvent.is.providerError(event)) failed = true
-          if (LLMEvent.is.textDelta(event)) chunks.push(event.text)
-          return Effect.void
-        }),
-        Effect.as(true),
-        Effect.catchTag("LLM.Error", () => Effect.succeed(false)),
-      )
-    const summary = chunks.join("")
-    if (!summarized || failed || !summary.trim()) return false
+    const runSummary = (maxTokens: number) =>
+      Effect.gen(function* () {
+        const chunks: string[] = []
+        let overflow = false
+        let failed = false
+        const completed = yield* dependencies.llm
+          .stream(
+            LLM.request({
+              model: input.model,
+              providerOptions: input.request.providerOptions,
+              system: input.request.system,
+              tools: input.request.tools,
+              toolChoice: "none",
+              messages: [...input.request.messages, Message.user(summaryPrompt)],
+              generation: { maxTokens },
+            }),
+          )
+          .pipe(
+            Stream.runForEach((event) => {
+              if (LLMEvent.is.providerError(event)) {
+                if (isContextOverflowFailure(event)) overflow = true
+                else failed = true
+              }
+              if (LLMEvent.is.textDelta(event)) chunks.push(event.text)
+              return Effect.void
+            }),
+            Effect.as(true),
+            Effect.catchTag("LLM.Error", (error) => {
+              if (isContextOverflowFailure(error)) overflow = true
+              else failed = true
+              return Effect.succeed(false)
+            }),
+          )
+        return { completed, overflow, failed, summary: chunks.join("") }
+      })
+
+    // Prefix-preservation on overflow: never shrink the (byte-identical) input. Reclaim headroom by
+    // halving the reserved output budget and retrying with the identical request head, so the KV
+    // cache survives. The input stays fixed; only max_tokens shrinks (down to a floor).
+    let maxTokens = summaryOutput
+    let attempt = yield* runSummary(maxTokens)
+    while (attempt.overflow && maxTokens > SUMMARY_OUTPUT_MIN) {
+      maxTokens = Math.max(SUMMARY_OUTPUT_MIN, Math.floor(maxTokens / 2))
+      attempt = yield* runSummary(maxTokens)
+    }
+    const summary = attempt.summary
+    if (!attempt.completed || attempt.overflow || attempt.failed || !summary.trim()) return false
     yield* dependencies.events.publish(SessionEvent.Compaction.Ended, {
       sessionID: input.sessionID,
       messageID,

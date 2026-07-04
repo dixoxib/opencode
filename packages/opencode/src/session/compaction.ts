@@ -38,8 +38,12 @@ export const Event = {
 
 export const PRUNE_MINIMUM = 20_000
 export const PRUNE_PROTECT = 40_000
-const TOOL_OUTPUT_MAX_CHARS = 2_000
 const PRUNE_PROTECTED_TOOLS = ["skill"]
+// Proactive output sizing for the summary request (prefix-preservation): reserve less output so the
+// byte-identical input always fits, instead of shrinking/truncating the prompt.
+const SUMMARY_OUTPUT_MAX = 4_096
+const SUMMARY_OUTPUT_MIN = 512
+const SUMMARY_OUTPUT_MARGIN = 1_000
 // OpenCode-DS-V4: preserve markdown file outputs during pruning
 function isMdPath(input: any): boolean {
   if (!input) return false
@@ -450,25 +454,24 @@ export const layer = Layer.effect(
         { sessionID: input.sessionID },
         { context: [], prompt: undefined },
       )
-      const nextPrompt = compacting.prompt ?? buildPrompt({ previousSummary, context: compacting.context })
+      // Prefix-preservation: the summarizer persona moves into the trailing user message so the
+      // request head (system + tools) stays byte-identical to the main turn. Plugin overrides win.
+      const nextPrompt =
+        compacting.prompt ??
+        [
+          isSeam ? SEAM_INSTRUCTIONS : COMPACTION_INSTRUCTIONS,
+          buildPrompt({ previousSummary, context: compacting.context }),
+        ].join("\n\n")
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
-      const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
-        stripMedia: true,
-        toolOutputMaxChars: TOOL_OUTPUT_MAX_CHARS,
-      })
+      // No stripMedia / toolOutputMaxChars: the conversation must serialize byte-identically to the
+      // main turn (prompt.ts uses toModelMessagesEffect(msgs, model) with no options) for the cache.
+      const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model)
       const tailIndex = selected.tail_start_id
         ? history.findIndex((message) => message.info.id === selected.tail_start_id)
         : -1
       const recent =
-        tailIndex < 0
-          ? ""
-          : JSON.stringify(
-              yield* MessageV2.toModelMessagesEffect(history.slice(tailIndex), model, {
-                stripMedia: true,
-                toolOutputMaxChars: TOOL_OUTPUT_MAX_CHARS,
-              }),
-            )
+        tailIndex < 0 ? "" : JSON.stringify(yield* MessageV2.toModelMessagesEffect(history.slice(tailIndex), model))
       const ctx = yield* InstanceState.context
       const msg: SessionV1.Assistant = {
         id: MessageID.ascending(),
@@ -502,19 +505,28 @@ export const layer = Layer.effect(
         sessionID: input.sessionID,
         model,
       })
+      const requestMessages = [
+        ...modelMessages,
+        { role: "user" as const, content: [{ type: "text" as const, text: nextPrompt }] },
+      ]
+      // Reserve less output (never shrink the byte-identical input) so the summary fits. Only when
+      // the input alone approaches the limit does this fall to the floor and let overflow surface.
+      const contextLimit = model.limit.context ?? 0
+      const desiredOutput = Math.min(model.limit.output ?? SUMMARY_OUTPUT_MAX, SUMMARY_OUTPUT_MAX)
+      const inputEstimate = Token.estimate(
+        JSON.stringify({ system: input.system ?? [], tools: input.tools ?? {}, messages: requestMessages }),
+      )
+      const available = contextLimit > 0 ? contextLimit - inputEstimate - SUMMARY_OUTPUT_MARGIN : desiredOutput
+      const maxOutputTokens = Math.max(SUMMARY_OUTPUT_MIN, Math.min(desiredOutput, available))
       const result = yield* processor.process({
         user: userMessage,
         agent: input.agent ?? agent,
         sessionID: input.sessionID,
         tools: (input.tools ?? {}) as any,
-        system: input.system ?? [isSeam ? SEAM_INSTRUCTIONS : COMPACTION_INSTRUCTIONS],
-        messages: [
-          ...modelMessages,
-          {
-            role: "user",
-            content: [{ type: "text", text: nextPrompt }],
-          },
-        ],
+        toolChoice: "none",
+        system: input.system ?? [],
+        messages: requestMessages,
+        maxOutputTokens,
         model,
       })
 

@@ -1217,6 +1217,29 @@ export const layer = Layer.effect(
           ]).pipe(Effect.map(([inst, skill]) => [...inst, ...(skill ? [skill] : [])])))
 
           if (task?.type === "compaction" || task?.type === "seam") {
+            // Prefix-preservation: advertise the same tool set the main turn does so the compaction/
+            // seam request head (system + tools) stays byte-identical for the provider KV-cache. The
+            // tools are advertised only (compaction uses toolChoice "none"), so this inert processor
+            // handle is never dereferenced during resolution.
+            const compactionTools = yield* SessionTools.resolve({
+              agent,
+              model,
+              session,
+              processor: {
+                message: { id: lastUser.id } as unknown as SessionV1.Assistant,
+                updateToolCall: () => Effect.succeed(undefined),
+                completeToolCall: () => Effect.void,
+              },
+              bypassAgentCheck: false,
+              messages: msgs,
+              promptOps: yield* ops(),
+            }).pipe(
+              Effect.provideService(Plugin.Service, plugin),
+              Effect.provideService(Permission.Service, permission),
+              Effect.provideService(ToolRegistry.Service, registry),
+              Effect.provideService(MCP.Service, mcp),
+              Effect.provideService(Truncate.Service, truncate),
+            )
             const result = yield* compaction.process({
               messages: msgs,
               parentID: lastUser.id,
@@ -1225,6 +1248,7 @@ export const layer = Layer.effect(
               overflow: task.overflow,
               system,
               agent,
+              tools: compactionTools,
             })
             if (result === "stop") break
             continue

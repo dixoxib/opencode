@@ -1047,10 +1047,36 @@ describe("session.compaction.process", () => {
         expect(part?.type).toBe("compaction")
         expect(part?.tail_start_id).toBeUndefined()
         expect(captured).toContain("recent image turn")
-        expect(captured).toContain("Attached image/png: big.png")
+        // Media is no longer stripped (prefix-preservation): the raw image flows through
+        // byte-identically to the main turn instead of the "[Attached ...]" placeholder.
+        expect(captured).toContain("a".repeat(200))
+        expect(captured).not.toContain("Attached image/png: big.png")
       }).pipe(withCompaction({ llm: stub.layer, config: cfg({ tail_turns: 1, preserve_recent_tokens: 100 }) }))
     },
     { git: true },
+  )
+
+  itCompaction.instance(
+    "reserves the summary output budget instead of the model's full output (prefix preservation)",
+    () => {
+      const stub = llm()
+      let capturedMax: number | undefined
+      stub.push(
+        reply("summary", (input) => {
+          capturedMax = input.maxOutputTokens
+        }),
+      )
+      return Effect.gen(function* () {
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        const msg = yield* createUserMessage(session.id, "hello")
+        const msgs = yield* ssn.messages({ sessionID: session.id })
+        yield* SessionCompaction.use.process({ parentID: msg.id, messages: msgs, sessionID: session.id, auto: false })
+        // The model advertises 32000 output tokens, but the summary reserves only the 4096 summary
+        // budget so the byte-identical input always has headroom (prefix-preservation, no truncation).
+        expect(capturedMax).toBe(4096)
+      }).pipe(withCompaction({ llm: stub.layer }))
+    },
   )
 
   itCompaction.instance(

@@ -582,6 +582,64 @@ it.instance("loop stops provider overflow instead of auto-compacting when disabl
   }),
 )
 
+it.instance("seam request head stays byte-identical to the main turn (prefix preservation)", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => providerCfg(url))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Seam" })
+
+    // 1) Main turn: populates the provider KV-cache with tools + system + messages.
+    yield* llm.text("first response")
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "hello world" }],
+    })
+    yield* prompt.loop({ sessionID: chat.id })
+    const mainHits = yield* llm.hits
+    expect(mainHits).toHaveLength(1)
+    const mainBody = mainHits[0].body
+
+    // 2) Manual seam: must reuse the identical request head so the cache survives. The manual
+    // seam/compact flow runs through the "compaction" agent (TUI summarize defaults to it).
+    yield* llm.text("## Goal\n- seam summary")
+    yield* SessionCompaction.use.create({ sessionID: chat.id, agent: "compaction", model: ref, auto: false })
+    yield* prompt.loop({ sessionID: chat.id })
+    const seamHits = yield* llm.hits
+    expect(seamHits.length).toBeGreaterThan(1)
+    const seamBody = seamHits.at(-1)!.body
+
+    // tools: byte-identical and non-empty (the pre-existing bug advertised none for compaction/seam,
+    // breaking the cache right after the system block).
+    expect(seamBody.tools).toBeDefined()
+    expect((seamBody.tools as unknown[]).length).toBeGreaterThan(0)
+    expect(JSON.stringify(seamBody.tools)).toBe(JSON.stringify(mainBody.tools))
+
+    // system: byte-identical
+    const systemOf = (body: Record<string, unknown>) =>
+      JSON.stringify((body.messages as Array<{ role: string }>).filter((message) => message.role === "system"))
+    expect(systemOf(seamBody)).toBe(systemOf(mainBody))
+
+    // message prefix: the seam carries the real conversation verbatim (no truncated/serialized blob).
+    const userContent = (body: Record<string, unknown>) =>
+      (body.messages as Array<{ role: string; content: unknown }>)
+        .filter((message) => message.role === "user")
+        .map((message) => JSON.stringify(message.content))
+    expect(userContent(seamBody).some((content) => content.includes("hello world"))).toBe(true)
+    // and the summary directive rides as the trailing user message.
+    expect(userContent(seamBody).some((content) => content.includes("## Goal"))).toBe(true)
+
+    // strong byte-identity: the main turn's entire message list is an exact prefix of the seam's,
+    // so the KV cache extends through the whole conversation (only the trailing directive is new).
+    const mainMessages = mainBody.messages as unknown[]
+    const seamMessages = seamBody.messages as unknown[]
+    expect(seamMessages.length).toBeGreaterThan(mainMessages.length)
+    expect(JSON.stringify(seamMessages.slice(0, mainMessages.length))).toBe(JSON.stringify(mainMessages))
+  }),
+)
+
 noLLMServer.instance.skip(
   "prompt emits v2 prompted and synthetic events (v2 projector disabled)",
   () =>

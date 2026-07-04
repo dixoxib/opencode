@@ -1108,7 +1108,11 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests).toHaveLength(2)
-      expect(userTexts(requests[0])[0]).toContain("## Goal")
+      // Prefix-preservation: the summarization request carries the real conversation first
+      // (byte-identical to the main turn) and the summary directive as the trailing user message.
+      const summaryUsers = userTexts(requests[0])
+      expect(summaryUsers[0]).toContain("Earlier question")
+      expect(summaryUsers[summaryUsers.length - 1]).toContain("## Goal")
       expect(userTexts(requests[1])).toHaveLength(1)
       expect(userTexts(requests[1])[0]).toContain("<summary>\n## Goal\n- Preserve the task\n</summary>")
       expect(userTexts(requests[1])[0]).toContain(`[User]: ${"Recent exact request ".repeat(180)}`)
@@ -1134,10 +1138,11 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests).toHaveLength(2)
-      expect(userTexts(requests[0])[0]).toContain(
+      const secondSummaryUsers = userTexts(requests[0])
+      expect(secondSummaryUsers[secondSummaryUsers.length - 1]).toContain(
         "<previous-summary>\n## Goal\n- Preserve the task\n</previous-summary>",
       )
-      expect(userTexts(requests[0])[0]).toContain("Recent exact request")
+      expect(secondSummaryUsers[0]).toContain("Recent exact request")
       expect((yield* (yield* SessionStore.Service).context(sessionID))[0]).toMatchObject({
         type: "compaction",
         summary: "## Goal\n- Preserve the updated task",
@@ -1160,7 +1165,9 @@ describe("SessionRunnerLLM", () => {
       yield* session.resume(sessionID)
 
       expect(requests).toHaveLength(3)
-      expect(userTexts(requests[1])[0]).toContain("## Goal")
+      // Summary directive is the trailing user message; the conversation precedes it byte-identically.
+      const overflowSummaryUsers = userTexts(requests[1])
+      expect(overflowSummaryUsers[overflowSummaryUsers.length - 1]).toContain("## Goal")
       expect(userTexts(requests[2])[0]).toContain("<summary>\n## Goal\n- Recover overflow\n</summary>")
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "compaction", summary: "## Goal\n- Recover overflow" },
@@ -1169,6 +1176,43 @@ describe("SessionRunnerLLM", () => {
       yield* replaySessionProjection(sessionID)
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "compaction" },
+        { type: "assistant", finish: "stop" },
+      ])
+    }),
+  )
+
+  it.effect("halves the summary output budget and retries on overflow while keeping the head identical", () =>
+    Effect.gen(function* () {
+      const session = yield* setupOverflowRecovery
+      responses = [
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
+        ],
+        // First summary attempt also overflows -> the valve halves max_tokens and retries.
+        [
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.providerError({ message: "prompt too long", classification: "context-overflow" }),
+        ],
+        fragmentFixture("text", "text-summary", ["## Goal\n- Recover overflow"]).completeEvents,
+        fragmentFixture("text", "text-final", ["Recovered"]).completeEvents,
+      ]
+      yield* session.prompt({ sessionID, prompt: new Prompt({ text: "Continue" }), resume: false })
+      yield* session.resume(sessionID)
+
+      // [0] main turn (overflows) -> [1] summary attempt (overflows) -> [2] summary retry -> [3] final.
+      expect(requests).toHaveLength(4)
+      const firstSummary = requests[1]!
+      const retrySummary = requests[2]!
+      // The valve only shrinks the reserved output budget...
+      expect(retrySummary.generation?.maxTokens).toBeLessThan(firstSummary.generation?.maxTokens!)
+      // ...while the request head (system + tools + messages) stays byte-identical for the KV cache.
+      expect(JSON.stringify(retrySummary.tools)).toBe(JSON.stringify(firstSummary.tools))
+      expect(JSON.stringify(retrySummary.system)).toBe(JSON.stringify(firstSummary.system))
+      expect(JSON.stringify(retrySummary.messages)).toBe(JSON.stringify(firstSummary.messages))
+      // and the compaction still completes successfully after the retry.
+      expect(yield* session.context(sessionID)).toMatchObject([
+        { type: "compaction", summary: "## Goal\n- Recover overflow" },
         { type: "assistant", finish: "stop" },
       ])
     }),

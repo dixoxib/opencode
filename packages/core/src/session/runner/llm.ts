@@ -172,7 +172,16 @@ export const layer = Layer.effect(
       if (session.location.directory !== location.directory || session.location.workspaceID !== location.workspaceID)
         return yield* Effect.interrupt
       const agent = yield* agents.select(session.agent)
-      const initialized = yield* SessionContextEpoch.initialize(db, loadSystemContext(agent), session.id)
+      // Primary, non-hidden agents that don't define their own system prompt share the default
+      // agent's head (system + skill guidance + tools) so DeepSeek's prefix cache survives
+      // build<->plan<->compaction hops within one thread. Permissions stay bound to the running
+      // agent and are enforced at execution time (permission.assert), so plan's edit-deny holds
+      // even though the edit tool is advertised.
+      const headAgent: AgentV2.Selection =
+        agent.info?.mode === "primary" && !agent.info.hidden && agent.info.system === undefined
+          ? yield* agents.select()
+          : agent
+      const initialized = yield* SessionContextEpoch.initialize(db, loadSystemContext(headAgent), session.id)
       const toolFibers = yield* FiberSet.make<void, ToolOutputStore.Error>()
       let needsContinuation = false
       if (promotion) {
@@ -184,17 +193,17 @@ export const layer = Layer.effect(
         }
       }
       const system =
-        initialized ?? (yield* SessionContextEpoch.prepare(db, events, loadSystemContext(agent), session.id))
+        initialized ?? (yield* SessionContextEpoch.prepare(db, events, loadSystemContext(headAgent), session.id))
       const model = yield* models.resolve(session)
       const entries = yield* SessionHistory.entriesForRunner(db, session.id, system.baselineSeq)
       const context = entries.map((entry) => entry.message)
       const isLastStep = agent.info?.steps !== undefined && step >= agent.info.steps
-      const toolMaterialization = isLastStep ? undefined : yield* tools.materialize(agent.info?.permissions)
+      const toolMaterialization = isLastStep ? undefined : yield* tools.materialize(headAgent.info?.permissions)
       const promptCacheKey = /^ses_[0-9a-f]{64}$/.test(session.id) ? session.id.slice(4) : session.id
       const request = LLM.request({
         model,
         providerOptions: { openai: { promptCacheKey } },
-        system: [agent.info?.system, system.baseline]
+        system: [headAgent.info?.system, system.baseline]
           .filter((part): part is string => part !== undefined && part.length > 0)
           .map(SystemPart.make),
         messages: [...toLLMMessages(context, model), ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : [])],
