@@ -38,6 +38,7 @@ import { isMedia } from "@/util/media"
 import type { SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
 import { Effect, Schema } from "effect"
+import { Token } from "@/util/token"
 
 export const node = LayerNode.group([Database.node])
 
@@ -142,10 +143,31 @@ function providerMeta(metadata: Record<string, any> | undefined) {
   return Object.keys(rest).length > 0 ? rest : undefined
 }
 
+export function seamPruneBoundary(input: WithParts[], margin: number): number {
+  let tokens = 0
+  for (let i = input.length - 1; i >= 0; i--) {
+    const m = input[i]
+    if (m.info.role === "assistant" && m.info.summary === true) {
+      const parent = input.find((p) => (p.info as any).id === (m.info as any).parentID)
+      if (parent && parent.info.agent === "seam") {
+        if (tokens >= margin) return i
+      }
+    }
+    for (const part of m.parts as any[]) {
+      if (part.text) tokens += Token.estimate(part.text)
+      if (part.type === "tool") {
+        if (part.state?.output) tokens += Token.estimate(String(part.state.output))
+        if (part.state?.input) tokens += Token.estimate(JSON.stringify(part.state.input))
+      }
+    }
+  }
+  return -1
+}
+
 export const toModelMessagesEffect = Effect.fnUntraced(function* (
   input: WithParts[],
   model: Provider.Model,
-  options?: { stripMedia?: boolean; toolOutputMaxChars?: number },
+  options?: { stripMedia?: boolean; toolOutputMaxChars?: number; pruneBeforeIndex?: number },
 ) {
   const result: UIMessage[] = []
   const toolNames = new Set<string>()
@@ -206,7 +228,8 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
     return { type: "json", value: output as never }
   }
 
-  for (const msg of input) {
+  for (let msgIndex = 0; msgIndex < input.length; msgIndex++) {
+    const msg = input[msgIndex]
     if (msg.parts.length === 0) continue
     if (msg.info.role === "user") {
       const userMessage: UIMessage = {
@@ -305,7 +328,7 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
           toolNames.add(part.tool)
           msgToolNames.add(part.tool)
           if (part.state.status === "completed") {
-            const outputText = part.state.time.compacted
+            const outputText = part.state.time.compacted || msgIndex < (options?.pruneBeforeIndex ?? Infinity)
               ? "[Old tool result content cleared]"
               : truncateToolOutput(part.state.output, options?.toolOutputMaxChars)
             const attachments = part.state.time.compacted || options?.stripMedia ? [] : (part.state.attachments ?? [])

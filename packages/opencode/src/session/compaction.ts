@@ -345,6 +345,7 @@ export const layer = Layer.effect(
       const cfg = yield* config.get()
       if (cfg.seam?.prune === false || process.env["OPENCODE_SEAM_PRUNE"] === "false") return
       const margin = Number(Flag.OPENCODE_SEAM_PRUNE_MARGIN) || (cfg.seam?.prune_margin ?? 50_000)
+      yield* Effect.logInfo("pruneSeam: starting", { sessionID: input.sessionID.slice(-8), margin })
 
       const msgs = yield* session
         .messages({ sessionID: input.sessionID })
@@ -371,7 +372,10 @@ export const layer = Layer.effect(
           }
         }
       }
-      if (pruneEnd < 0) return
+      if (pruneEnd < 0) {
+        yield* Effect.logInfo("pruneSeam: no seam found or margin not met", { tokensEstimate: tokens })
+        return
+      }
 
       // Prune all tool outputs in messages older than pruneEnd — no protection for seam context
       let pruned = 0
@@ -389,6 +393,7 @@ export const layer = Layer.effect(
           pruned++
         }
       }
+      yield* Effect.logInfo("pruneSeam: done", { pruned })
     })
 
     const processCompaction = Effect.fn("SessionCompaction.process")(function* (input: {
@@ -469,12 +474,22 @@ export const layer = Layer.effect(
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
       // No stripMedia / toolOutputMaxChars: the conversation must serialize byte-identically to the
       // main turn (prompt.ts uses toModelMessagesEffect(msgs, model) with no options) for the cache.
-      const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model)
+      const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
+        pruneBeforeIndex: MessageV2.seamPruneBoundary(
+          msgs,
+          Number(Flag.OPENCODE_SEAM_PRUNE_MARGIN) || (cfg.seam?.prune_margin ?? 50_000),
+        ),
+      })
       const tailIndex = selected.tail_start_id
         ? history.findIndex((message) => message.info.id === selected.tail_start_id)
         : -1
       const recent =
-        tailIndex < 0 ? "" : JSON.stringify(yield* MessageV2.toModelMessagesEffect(history.slice(tailIndex), model))
+        tailIndex < 0 ? "" : JSON.stringify(yield* MessageV2.toModelMessagesEffect(history.slice(tailIndex), model, {
+          pruneBeforeIndex: MessageV2.seamPruneBoundary(
+            history.slice(tailIndex),
+            Number(Flag.OPENCODE_SEAM_PRUNE_MARGIN) || (cfg.seam?.prune_margin ?? 50_000),
+          ),
+        }))
       const ctx = yield* InstanceState.context
       const msg: SessionV1.Assistant = {
         id: MessageID.ascending(),

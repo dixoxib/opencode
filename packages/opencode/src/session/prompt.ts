@@ -1342,7 +1342,17 @@ export const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            const modelMsgs = yield* MessageV2.toModelMessagesEffect(msgs, model)
+            const seamCfg = yield* config.get().pipe(Effect.map((c) => (c as any).seam))
+            const modelMsgs = yield* MessageV2.toModelMessagesEffect(msgs, model, {
+              pruneBeforeIndex: (() => {
+                const sc = seamCfg as { prune?: boolean; prune_margin?: number } | undefined
+                if (sc?.prune === false || process.env["OPENCODE_SEAM_PRUNE"] === "false") return -1
+                return MessageV2.seamPruneBoundary(
+                  msgs,
+                  Number(Flag.OPENCODE_SEAM_PRUNE_MARGIN) || (sc?.prune_margin ?? 50_000),
+                )
+              })(),
+            })
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             const result = yield* handle.process({
@@ -1431,6 +1441,9 @@ export const layer = Layer.effect(
                 }
                 if (bpe >= limit) {
                   stepSinceSeam = 0
+                  // Prune tool outputs from the previous seam block before a new one begins —
+                  // this is the natural prune-point: the old block's content is now summarized
+                  // by the previous seam, so its raw tool outputs can be compacted.
                   yield* compaction.create({
                     sessionID,
                     agent: "seam",
