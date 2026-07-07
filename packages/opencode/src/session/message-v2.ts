@@ -637,10 +637,19 @@ export function filterCompacted(msgs: Iterable<WithParts>) {
     : -1
   const tailIndex = part?.tail_start_id ? result.findIndex((msg) => msg.info.id === part.tail_start_id) : -1
   if (tailIndex >= 0 && tailIndex < compactionIndex && summaryIndex > compactionIndex) {
+    // Retained tail is older history (before the compaction); normal compaction flow.
     return [
       ...result.slice(compactionIndex, summaryIndex + 1),
       ...result.slice(tailIndex, compactionIndex),
       ...result.slice(summaryIndex + 1),
+    ]
+  }
+  if (tailIndex >= 0 && tailIndex > summaryIndex && summaryIndex > compactionIndex) {
+    // Retained tail is newer context (after the compaction); switchSeam / manual flip flow.
+    // Drop pre-compaction messages, keep compaction + summary + tail.
+    return [
+      ...result.slice(compactionIndex, summaryIndex + 1),
+      ...result.slice(tailIndex),
     ]
   }
   return result

@@ -1485,15 +1485,15 @@ describe("session.compaction.process", () => {
       return Effect.gen(function* () {
         const ssn = yield* SessionNs.Service
         const session = yield* ssn.create({})
-        const u1 = yield* createUserMessage(session.id, "first - before seam")
-        const u2 = yield* createUserMessage(session.id, "second - after seam")
-
+        const u1 = yield* createUserMessage(session.id, "first - before seam, will be dropped")
         // Create & process a SEAM
         yield* SessionCompaction.use.create({ sessionID: session.id, agent: "seam", model: ref, auto: false })
         const msgs0 = yield* ssn.messages({ sessionID: session.id })
         const parent = msgs0.at(-1)?.info.id
         expect(parent).toBeTruthy()
         yield* SessionCompaction.use.process({ parentID: parent!, messages: msgs0, sessionID: session.id, auto: false })
+        // u2 is created AFTER the seam, so it stays after flip
+        const u2 = yield* createUserMessage(session.id, "second - after seam, will be kept")
 
         // Before flip: filterCompacted keeps full history + appended seam summary
         const before = MessageV2.filterCompacted(yield* MessageV2.stream(session.id))

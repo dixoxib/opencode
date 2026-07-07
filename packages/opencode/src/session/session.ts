@@ -803,10 +803,21 @@ export const layer: Layer.Layer<
 
       // Flip the marker user: agent seam -> compaction (else filterCompacted's backward pass drops it)
       yield* updateMessage({ ...marker.info, agent: "compaction" })
-      // Flip the marker part: type seam -> compaction (no tail_start_id => collapse everything before)
+      // Flip the marker part: type seam -> compaction. Set tail_start_id to the first
+      // message AFTER the seam (post-seam context). If none exists (seam is the last thing)
+      // default to the assistant itself so filterCompacted keeps the summary but nothing
+      // after — equivalent to the seam being at session end.
       for (const part of marker.parts) {
-        if (part.type === "seam" || part.type === "compaction")
-          yield* updatePart({ ...part, type: "compaction" } as SessionV1.Part)
+        if (part.type === "seam" || part.type === "compaction") {
+          const afterSeam = msgs.slice(
+            msgs.findIndex((m) => m.info.id === (assistant?.info.id ?? marker.info.id)) + 1,
+          )
+          yield* updatePart({
+            ...part,
+            type: "compaction",
+            tail_start_id: afterSeam[0]?.info.id ?? assistant?.info.id,
+          } as SessionV1.Part)
+        }
       }
       // Flip the summary assistant: mode/agent seam -> compaction (UI + consistency)
       if (assistant && assistant.info.role === "assistant")
