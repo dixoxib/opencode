@@ -187,6 +187,8 @@ import type {
   SessionDiffResponses,
   SessionForkErrors,
   SessionForkResponses,
+  SessionSwitchSeamErrors,
+  SessionSwitchSeamResponses,
   SessionGetErrors,
   SessionGetResponses,
   SessionInitErrors,
@@ -3880,6 +3882,43 @@ export class Session2 extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<SessionForkResponses, SessionForkErrors, ThrowOnError>({
       url: "/session/{sessionID}/fork",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Convert a seam checkpoint into a compaction in place, collapsing earlier context.
+   */
+  public switchSeam<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+      messageID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "messageID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionSwitchSeamResponses, SessionSwitchSeamErrors, ThrowOnError>({
+      url: "/session/{sessionID}/switch-seam",
       ...options,
       ...params,
       headers: {

@@ -9816,6 +9816,29 @@ export type SessionForkResponses = {
 
 export type SessionForkResponse = SessionForkResponses[keyof SessionForkResponses]
 
+export type SessionSwitchSeamErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionSwitchSeamError = SessionSwitchSeamErrors[keyof SessionSwitchSeamErrors]
+
+export type SessionSwitchSeamResponses = {
+  /**
+   * 200
+   */
+  200: Session
+}
+
+export type SessionSwitchSeamResponse = SessionSwitchSeamResponses[keyof SessionSwitchSeamResponses]
+
+
 export type SessionAbortData = {
   body?: never
   path: {

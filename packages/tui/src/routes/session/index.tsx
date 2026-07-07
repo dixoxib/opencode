@@ -52,6 +52,7 @@ import type { PromptInfo } from "../../component/prompt/history"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
+import { DialogSwitchSeamFromTimeline } from "./dialog-switch-seam-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar } from "./sidebar"
 import { SubagentFooter } from "./subagent-footer.tsx"
@@ -119,6 +120,7 @@ const sessionBindingCommands = [
   "session.rename",
   "session.timeline",
   "session.fork",
+  "session.switchseam",
   "session.compact",
   "session.unshare",
   "session.undo",
@@ -537,6 +539,28 @@ export function Session() {
       run: () => {
         dialog.replace(() => (
           <DialogForkFromTimeline
+            onMove={(messageID) => {
+              if (!messageID) return
+              const child = scroll.getChildren().find((child) => {
+                return child.id === messageID
+              })
+              if (child) scroll.scrollBy(child.y - scroll.y - 1)
+            }}
+            sessionID={route.sessionID}
+          />
+        ))
+      },
+    },
+    {
+      title: "Switch seam to compaction",
+      value: "session.switchseam",
+      category: "Session",
+      slash: {
+        name: "switchseam",
+      },
+      run: () => {
+        dialog.replace(() => (
+          <DialogSwitchSeamFromTimeline
             onMove={(messageID) => {
               if (!messageID) return
               const child = scroll.getChildren().find((child) => {

@@ -474,6 +474,7 @@ export interface Interface {
     workspaceID?: WorkspaceV2.ID
   }) => Effect.Effect<Info>
   readonly fork: (input: { sessionID: SessionID; messageID?: MessageID }) => Effect.Effect<Info, NotFound>
+  readonly switchSeam: (input: { sessionID: SessionID; messageID: MessageID }) => Effect.Effect<Info, NotFound>
   readonly touch: (sessionID: SessionID) => Effect.Effect<void>
   readonly get: (id: SessionID) => Effect.Effect<Info, NotFound>
   readonly setTitle: (input: { sessionID: SessionID; title: string }) => Effect.Effect<void>
@@ -776,6 +777,44 @@ export const layer: Layer.Layer<
       return session
     })
 
+    // Convert a seam into a compaction IN PLACE (reversible marker flip, no copy):
+    // flip the seam marker (user agent + part type) and its summary assistant from "seam"
+    // to "compaction". With no tail_start_id, filterCompacted then drops everything before
+    // the marker (collapsed into the summary) and keeps the summary + everything after.
+    const switchSeam = Effect.fn("Session.switchSeam")(function* (input: {
+      sessionID: SessionID
+      messageID: MessageID
+    }) {
+      const original = yield* get(input.sessionID)
+      const msgs = yield* messages({ sessionID: input.sessionID })
+      const target = msgs.find((m) => m.info.id === input.messageID)
+      if (!target)
+        return yield* Effect.fail(new NotFoundError({ message: `Seam message not found: ${input.messageID}` }))
+
+      // Resolve the (marker user, summary assistant) pair from either endpoint.
+      let assistant = target.info.role === "assistant" ? target : undefined
+      let marker =
+        target.info.role === "user" ? target : msgs.find((m) => m.info.id === (target.info as any).parentID)
+      if (!assistant && marker)
+        assistant = msgs.find((m) => m.info.role === "assistant" && (m.info as any).parentID === marker!.info.id)
+      if (assistant && !marker) marker = msgs.find((m) => m.info.id === (assistant!.info as any).parentID)
+      if (!marker || marker.info.role !== "user")
+        return yield* Effect.fail(new NotFoundError({ message: `Seam marker not found for: ${input.messageID}` }))
+
+      // Flip the marker user: agent seam -> compaction (else filterCompacted's backward pass drops it)
+      yield* updateMessage({ ...marker.info, agent: "compaction" })
+      // Flip the marker part: type seam -> compaction (no tail_start_id => collapse everything before)
+      for (const part of marker.parts) {
+        if (part.type === "seam" || part.type === "compaction")
+          yield* updatePart({ ...part, type: "compaction" } as SessionV1.Part)
+      }
+      // Flip the summary assistant: mode/agent seam -> compaction (UI + consistency)
+      if (assistant && assistant.info.role === "assistant")
+        yield* updateMessage({ ...assistant.info, mode: "compaction", agent: "compaction" })
+
+      return original
+    })
+
     const patch = (sessionID: SessionID, info: Patch) =>
       Effect.gen(function* () {
         const current = yield* get(sessionID)
@@ -940,6 +979,7 @@ export const layer: Layer.Layer<
       listGlobal,
       create,
       fork,
+      switchSeam,
       touch,
       get,
       setTitle,

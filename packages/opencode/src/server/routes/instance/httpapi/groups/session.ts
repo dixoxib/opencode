@@ -57,6 +57,7 @@ export const UpdatePayload = Schema.Struct({
   ),
 })
 export const ForkPayload = Schema.Struct(Struct.omit(Session.ForkInput.fields, ["sessionID"]))
+export const SwitchSeamPayload = Schema.Struct({ messageID: MessageID })
 export const InitPayload = Schema.Struct({
   modelID: ModelV2.ID,
   providerID: ProviderV2.ID,
@@ -89,6 +90,7 @@ export const SessionPaths = {
   remove: `${root}/:sessionID`,
   update: `${root}/:sessionID`,
   fork: `${root}/:sessionID/fork`,
+  switchSeam: `${root}/:sessionID/switch-seam`,
   abort: `${root}/:sessionID/abort`,
   share: `${root}/:sessionID/share`,
   init: `${root}/:sessionID/init`,
@@ -249,6 +251,19 @@ export const SessionApi = HttpApi.make("session")
             identifier: "session.fork",
             summary: "Fork session",
             description: "Create a new session by forking an existing session at a specific message point.",
+          }),
+        ),
+        HttpApiEndpoint.post("switchSeam", SessionPaths.switchSeam, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          payload: SwitchSeamPayload,
+          success: described(Session.Info, "200"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.switchSeam",
+            summary: "Switch seam to compaction",
+            description: "Convert a seam checkpoint into a compaction in place, collapsing earlier context.",
           }),
         ),
         HttpApiEndpoint.post("abort", SessionPaths.abort, {

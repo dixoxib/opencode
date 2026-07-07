@@ -16,6 +16,7 @@ import { Permission } from "../../src/permission"
 import { Plugin } from "../../src/plugin"
 import { provideTmpdirInstance, TestInstance } from "../fixture/fixture"
 import { Session as SessionNs } from "@/session/session"
+import * as SessionLayer from "@/session/session"
 import { MessageV2 } from "../../src/session/message-v2"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
@@ -1472,6 +1473,46 @@ describe("session.compaction.process", () => {
         expect(seamAssistant!.info.summary).toBe(true)
         // only the seam marker user message is dropped, not the history
         expect(filtered.some((m) => m.info.role === "user" && m.parts.some((p) => p.type === "seam"))).toBe(false)
+      }).pipe(withCompaction({ llm: stub.layer }))
+    },
+  )
+
+  itCompaction.instance(
+    "switchSeam: flips seam marker to compaction, filterCompacted drops everything before",
+    () => {
+      const stub = llm()
+      stub.push(reply("## Goal\n- seam to flip"))
+      return Effect.gen(function* () {
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        const u1 = yield* createUserMessage(session.id, "first - before seam")
+        const u2 = yield* createUserMessage(session.id, "second - after seam")
+
+        // Create & process a SEAM
+        yield* SessionCompaction.use.create({ sessionID: session.id, agent: "seam", model: ref, auto: false })
+        const msgs0 = yield* ssn.messages({ sessionID: session.id })
+        const parent = msgs0.at(-1)?.info.id
+        expect(parent).toBeTruthy()
+        yield* SessionCompaction.use.process({ parentID: parent!, messages: msgs0, sessionID: session.id, auto: false })
+
+        // Before flip: filterCompacted keeps full history + appended seam summary
+        const before = MessageV2.filterCompacted(yield* MessageV2.stream(session.id))
+        expect(before.map((m) => m.info.id)).toContain(u1.id)
+        expect(before.map((m) => m.info.id)).toContain(u2.id)
+
+        // Flip the seam to compaction
+        const msgs = yield* ssn.messages({ sessionID: session.id })
+        const seamAssistant = msgs.find(
+          (m) => m.info.role === "assistant" && m.info.mode === "seam",
+        )
+        expect(seamAssistant).toBeTruthy()
+        yield* SessionNs.Service.use((svc) => svc.switchSeam({ sessionID: session.id, messageID: seamAssistant!.info.id }))
+          .pipe(Effect.orDie)
+
+        // After flip: filterCompacted drops everything before the (now compaction) marker
+        const after = MessageV2.filterCompacted(yield* MessageV2.stream(session.id))
+        expect(after.map((m) => m.info.id)).not.toContain(u1.id)
+        expect(after.map((m) => m.info.id)).toContain(u2.id)
       }).pipe(withCompaction({ llm: stub.layer }))
     },
   )

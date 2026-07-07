@@ -25,6 +25,7 @@ import {
   CommandPayload,
   DiffQuery,
   ForkPayload,
+  SwitchSeamPayload,
   InitPayload,
   ListQuery,
   MessagesQuery,
@@ -227,6 +228,18 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       return yield* fork({ params: ctx.params, payload })
     })
 
+    const switchSeam = Effect.fn("SessionHttpApi.switchSeam")(function* (ctx: {
+      params: { sessionID: SessionID }
+      payload: typeof SwitchSeamPayload.Type
+    }) {
+      return yield* SessionError.mapStorageNotFound(
+        session.switchSeam({
+          sessionID: ctx.params.sessionID,
+          messageID: ctx.payload.messageID,
+        }),
+      )
+    })
+
     const abort = Effect.fn("SessionHttpApi.abort")(function* (ctx: { params: { sessionID: SessionID } }) {
       yield* promptSvc.cancel(ctx.params.sessionID)
       return true
@@ -417,6 +430,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("remove", remove)
       .handle("update", update)
       .handleRaw("fork", forkRaw)
+      .handle("switchSeam", switchSeam)
       .handle("abort", abort)
       .handle("init", init)
       .handle("share", share)
