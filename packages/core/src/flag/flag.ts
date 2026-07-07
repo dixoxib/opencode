@@ -34,6 +34,7 @@ export const Flag = {
   get OPENCODE_SEAM_PRUNE() { return process.env["OPENCODE_SEAM_PRUNE"] !== "false" },
   get OPENCODE_SEAM_BLOCK_SIZE() { return process.env["OPENCODE_SEAM_BLOCK_SIZE"] },
   get OPENCODE_SEAM_PRUNE_MARGIN() { return process.env["OPENCODE_SEAM_PRUNE_MARGIN"] },
+  get OPENCODE_SEAM_PRUNE_MIN_CHARS() { return process.env["OPENCODE_SEAM_PRUNE_MIN_CHARS"] },
   get OPENCODE_MAX_OUTPUT_TOKENS() { return process.env["OPENCODE_MAX_OUTPUT_TOKENS"] },
   get OPENCODE_CONTEXT_LIMIT() { return process.env["OPENCODE_CONTEXT_LIMIT"] },
   OPENCODE_DISABLE_MOUSE: truthy("OPENCODE_DISABLE_MOUSE"),

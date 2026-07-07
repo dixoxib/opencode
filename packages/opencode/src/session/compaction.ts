@@ -479,6 +479,7 @@ export const layer = Layer.effect(
           msgs,
           Number(Flag.OPENCODE_SEAM_PRUNE_MARGIN) || (cfg.seam?.prune_margin ?? 50_000),
         ),
+        pruneMinChars: Number(Flag.OPENCODE_SEAM_PRUNE_MIN_CHARS) || 500,
       })
       const tailIndex = selected.tail_start_id
         ? history.findIndex((message) => message.info.id === selected.tail_start_id)
@@ -489,6 +490,7 @@ export const layer = Layer.effect(
             history.slice(tailIndex),
             Number(Flag.OPENCODE_SEAM_PRUNE_MARGIN) || (cfg.seam?.prune_margin ?? 50_000),
           ),
+          pruneMinChars: Number(Flag.OPENCODE_SEAM_PRUNE_MIN_CHARS) || 500,
         }))
       const ctx = yield* InstanceState.context
       const msg: SessionV1.Assistant = {

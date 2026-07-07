@@ -1344,6 +1344,7 @@ export const layer = Layer.effect(
 
             const seamCfg = yield* config.get().pipe(Effect.map((c) => (c as any).seam))
             const modelMsgs = yield* MessageV2.toModelMessagesEffect(msgs, model, {
+              pruneMinChars: Number(Flag.OPENCODE_SEAM_PRUNE_MIN_CHARS) || 500,
               pruneBeforeIndex: (() => {
                 const sc = seamCfg as { prune?: boolean; prune_margin?: number } | undefined
                 if (sc?.prune === false || process.env["OPENCODE_SEAM_PRUNE"] === "false") return -1

@@ -147,11 +147,8 @@ export function seamPruneBoundary(input: WithParts[], margin: number): number {
   let tokens = 0
   for (let i = input.length - 1; i >= 0; i--) {
     const m = input[i]
-    if (m.info.role === "assistant" && m.info.summary === true) {
-      const parent = input.find((p) => (p.info as any).id === (m.info as any).parentID)
-      if (parent && parent.info.agent === "seam") {
-        if (tokens >= margin) return i
-      }
+    if (m.info.role === "assistant" && m.info.summary === true && m.info.agent === "seam") {
+      if (tokens >= margin) return i
     }
     for (const part of m.parts as any[]) {
       if (part.text) tokens += Token.estimate(part.text)
@@ -167,7 +164,7 @@ export function seamPruneBoundary(input: WithParts[], margin: number): number {
 export const toModelMessagesEffect = Effect.fnUntraced(function* (
   input: WithParts[],
   model: Provider.Model,
-  options?: { stripMedia?: boolean; toolOutputMaxChars?: number; pruneBeforeIndex?: number },
+  options?: { stripMedia?: boolean; toolOutputMaxChars?: number; pruneBeforeIndex?: number; pruneMinChars?: number },
 ) {
   const result: UIMessage[] = []
   const toolNames = new Set<string>()
@@ -328,7 +325,12 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
           toolNames.add(part.tool)
           msgToolNames.add(part.tool)
           if (part.state.status === "completed") {
-            const outputText = part.state.time.compacted || msgIndex < (options?.pruneBeforeIndex ?? Infinity)
+            // Inline seam-pruning: replace old tool outputs before the boundary, but keep small
+            // ones (< pruneMinChars) — they're cheap and often carry useful signal.
+            const prunedInline =
+              msgIndex < (options?.pruneBeforeIndex ?? -1) &&
+              part.state.output.length >= (options?.pruneMinChars ?? 500)
+            const outputText = part.state.time.compacted || prunedInline
               ? "[Old tool result content cleared]"
               : truncateToolOutput(part.state.output, options?.toolOutputMaxChars)
             const attachments = part.state.time.compacted || options?.stripMedia ? [] : (part.state.attachments ?? [])
