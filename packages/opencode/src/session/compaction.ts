@@ -442,7 +442,6 @@ export const layer = Layer.effect(
       const history = compactionPart && messages.at(-1)?.info.id === input.parentID ? messages.slice(0, -1) : messages
       const prior = completedCompactions(history)
       const hidden = new Set(prior.flatMap((item) => [item.userIndex, item.assistantIndex]))
-      const previousSummary = prior.at(-1)?.summary
       const selected = yield* select({
         messages: history.filter((_, index) => !hidden.has(index)),
         cfg,
@@ -456,13 +455,17 @@ export const layer = Layer.effect(
       )
       // Prefix-preservation: the summarizer persona moves into the trailing user message so the
       // request head (system + tools) stays byte-identical to the main turn. Plugin overrides win.
+      // Prefix-preservation: the summarization request is a COPY of the normal turn's build — the
+      // full conversation (input.messages / history), no special head selection. Only the trailing
+      // directive differs. The prior summary is already in this context (as the normal turn has it),
+      // so we do NOT re-inject <previous-summary> — that would both duplicate it and, more
+      // importantly, make the request diverge from the normal turn's byte-prefix.
       const nextPrompt =
         compacting.prompt ??
-        [
-          isSeam ? SEAM_INSTRUCTIONS : COMPACTION_INSTRUCTIONS,
-          buildPrompt({ previousSummary, context: compacting.context }),
-        ].join("\n\n")
-      const msgs = structuredClone(selected.head)
+        [isSeam ? SEAM_INSTRUCTIONS : COMPACTION_INSTRUCTIONS, buildPrompt({ context: compacting.context })].join(
+          "\n\n",
+        )
+      const msgs = structuredClone(history)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
       // No stripMedia / toolOutputMaxChars: the conversation must serialize byte-identically to the
       // main turn (prompt.ts uses toModelMessagesEffect(msgs, model) with no options) for the cache.
@@ -478,8 +481,11 @@ export const layer = Layer.effect(
         role: "assistant",
         parentID: input.parentID,
         sessionID: input.sessionID,
-        mode: "compaction",
-        agent: "compaction",
+        // Seam: append the summary as a mode:"seam" message. summary:true is needed for
+        // filterCompacted + loop to recognise the turn as completed, but mode:"seam" prevents
+        // the checkpoint-based history replacement (only compaction parts trigger that).
+        mode: isSeam ? "seam" : "compaction",
+        agent: isSeam ? "seam" : "compaction",
         variant: userMessage.model.variant,
         summary: true,
         path: {
@@ -523,7 +529,6 @@ export const layer = Layer.effect(
         agent: input.agent ?? agent,
         sessionID: input.sessionID,
         tools: (input.tools ?? {}) as any,
-        toolChoice: "none",
         system: input.system ?? [],
         messages: requestMessages,
         maxOutputTokens,

@@ -49,7 +49,8 @@ Rules:
 - Keep every section, even when empty.
 - Use terse bullets, not prose paragraphs.
 - Preserve exact file paths, commands, error strings, and identifiers when known.
-- Do not mention the summary process or that context was compacted.`
+- Do not mention the summary process or that context was compacted.
+- Do not call any tools. Output only the summary text.`
 
 type Entry = {
   readonly seq: number
@@ -208,10 +209,9 @@ export const make = (dependencies: Dependencies) => {
             LLM.request({
               model: input.model,
               providerOptions: input.request.providerOptions,
-              system: input.request.system,
-              tools: input.request.tools,
-              toolChoice: "none",
-              messages: [...input.request.messages, Message.user(summaryPrompt)],
+          system: input.request.system,
+          tools: input.request.tools,
+          messages: [...input.request.messages, Message.user(summaryPrompt)],
               generation: { maxTokens },
             }),
           )

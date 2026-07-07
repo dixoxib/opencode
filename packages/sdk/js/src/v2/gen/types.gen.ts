@@ -9965,6 +9965,7 @@ export type SessionSummarizeData = {
     providerID: string
     modelID: string
     auto?: boolean
+    agent?: string
   }
   path: {
     sessionID: string

@@ -1117,8 +1117,10 @@ describe("session.compaction.process", () => {
         const part = yield* readCompactionPart(session.id)
         expect(part?.type).toBe("compaction")
         expect(part?.tail_start_id).toBe(keep.id)
+        // Prefix-preservation: the summary request mirrors the normal turn (full conversation), so
+        // the retained tail is now ALSO in the request. Storage still keeps it verbatim via tail_start_id.
         expect(captured).toContain("zzzz")
-        expect(captured).not.toContain("keep tail")
+        expect(captured).toContain("keep tail")
 
         const filtered = MessageV2.filterCompacted(yield* MessageV2.stream(session.id))
         expect(filtered.map((msg) => msg.info.id).slice(0, 3)).toEqual([parent!, expect.any(String), keep.id])
@@ -1400,7 +1402,7 @@ describe("session.compaction.process", () => {
   )
 
   itCompaction.instance(
-    "summarizes only the head while keeping recent tail out of summary input",
+    "sends the full conversation as summary input (copy of the normal request build)",
     () => {
       const stub = llm()
       let captured = ""
@@ -1427,13 +1429,51 @@ describe("session.compaction.process", () => {
           auto: false,
         })
 
+        // Prefix-preservation: the compaction request is a copy of the normal turn — the WHOLE
+        // conversation is the summary input (no head/recent split), so it stays a byte-prefix.
         expect(captured).toContain("older context")
-        expect(captured).not.toContain("keep this turn")
-        expect(captured).not.toContain("and this one too")
+        expect(captured).toContain("keep this turn")
+        expect(captured).toContain("and this one too")
         expect(captured).not.toContain("What did we do so far?")
       }).pipe(withCompaction({ llm: stub.layer }))
     },
     { git: true },
+  )
+
+  itCompaction.instance(
+    "seam keeps the full history and appends the summary (no replacement)",
+    () => {
+      const stub = llm()
+      stub.push(reply("## Active Goal\n- seam summary"))
+      return Effect.gen(function* () {
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        const u1 = yield* createUserMessage(session.id, "first turn")
+        const u2 = yield* createUserMessage(session.id, "second turn")
+        const u3 = yield* createUserMessage(session.id, "third turn")
+
+        // seam marker (agent "seam"), then process it
+        yield* SessionCompaction.use.create({ sessionID: session.id, agent: "seam", model: ref, auto: false })
+        const msgs = yield* ssn.messages({ sessionID: session.id })
+        const parent = msgs.at(-1)?.info.id
+        expect(parent).toBeTruthy()
+        yield* SessionCompaction.use.process({ parentID: parent!, messages: msgs, sessionID: session.id, auto: false })
+
+        const filtered = MessageV2.filterCompacted(yield* MessageV2.stream(session.id))
+        const ids = filtered.map((m) => m.info.id)
+        // full history preserved — a seam does NOT replace/trim, unlike a compaction
+        expect(ids).toContain(u1.id)
+        expect(ids).toContain(u2.id)
+        expect(ids).toContain(u3.id)
+        // summary appended as a mode:"seam" assistant (summary:true for turn completion,
+        // but mode:"seam" keeps it from being treated as a history-replacing checkpoint)
+        const seamAssistant = filtered.find((m) => m.info.role === "assistant" && m.info.mode === "seam")
+        expect(seamAssistant).toBeTruthy()
+        expect(seamAssistant!.info.summary).toBe(true)
+        // only the seam marker user message is dropped, not the history
+        expect(filtered.some((m) => m.info.role === "user" && m.parts.some((p) => p.type === "seam"))).toBe(false)
+      }).pipe(withCompaction({ llm: stub.layer }))
+    },
   )
 
   itCompaction.instance(

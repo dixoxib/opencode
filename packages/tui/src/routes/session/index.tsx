@@ -58,6 +58,7 @@ import { SubagentFooter } from "./subagent-footer.tsx"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
 import { errorMessage } from "../../util/error"
+import { TtsPartControls } from "../../agent-addons/tts/controls"
 import { Toast, useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv.tsx"
 import stripAnsi from "strip-ansi"
@@ -595,6 +596,7 @@ export function Session() {
           sessionID: route.sessionID,
           modelID: selectedModel.modelID,
           providerID: selectedModel.providerID,
+          agent: "seam",
         } as any)
         dialog.clear()
       },
@@ -1632,6 +1634,7 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
 
   return (
     <Show when={content()}>
+      <TtsPartControls part={props.part} message={props.message} place="above" />
       <box
         ref={(el: BoxRenderable) => alwaysSeparate.add(el)}
         paddingLeft={3}
@@ -1662,6 +1665,7 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
           </box>
         </Show>
       </box>
+      <TtsPartControls part={props.part} message={props.message} place="below" />
     </Show>
   )
 }
@@ -1715,6 +1719,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
   const { theme, syntax } = useTheme()
   return (
     <Show when={props.part.text.trim()}>
+      <TtsPartControls part={props.part} message={props.message} place="above" />
       <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3} marginTop={1} flexShrink={0}>
         <markdown
           syntaxStyle={syntax()}
@@ -1727,6 +1732,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
           bg={theme.background}
         />
       </box>
+      <TtsPartControls part={props.part} message={props.message} place="below" />
     </Show>
   )
 }

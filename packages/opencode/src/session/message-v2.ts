@@ -579,10 +579,15 @@ export function filterCompacted(msgs: Iterable<WithParts>) {
     if (msg.info.role === "assistant" && (msg.info.summary || msg.info.mode === "seam") && msg.info.finish && !msg.info.error)
       completed.add(msg.info.parentID)
   }
-  // Remove seam user messages that weren't caught by the forward pass
-  // (completed is populated by the assistant AFTER the user in chronological order)
+  // Remove stale seam user messages that were preceded by their seam summary
+  // (completed is populated by the assistant AFTER the user in chronological order).
+  // Fresh seam markers (no summary yet) stay so the loop picks them up as tasks.
   for (let i = result.length - 1; i >= 0; i--) {
-    if (result[i].info.role === "user" && result[i].info.agent === "seam") {
+    if (
+      result[i].info.role === "user" &&
+      result[i].info.agent === "seam" &&
+      completed.has(result[i].info.id)
+    ) {
       result.splice(i, 1)
     }
   }
