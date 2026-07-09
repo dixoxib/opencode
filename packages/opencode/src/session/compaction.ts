@@ -676,6 +676,8 @@ export const layer = Layer.effect(
             })
         }
         yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
+      // Clears cached BPE token estimates after compaction (history pivots, old texts drop).
+      import("@/agent-addons/util/token-deepseek").then(({ compactCache }) => compactCache())
       }
       return result
     })

@@ -31,18 +31,17 @@ export function estimate(text: string): number {
   const hit = _cache.get(text)
   if (hit !== undefined) return hit
   const v = Math.max(1, count(text))
-  if (_cache.size >= 5000) {
-    let i = 0
-    for (const key of _cache.keys()) {
-      _cache.delete(key)
-      if (++i >= 2500) break
-    }
-  }
   _cache.set(text, v)
   return v
 }
 
+// Content-addressable session cache: fast BPE token-lookups, no eviction until compaction.
 const _cache = new Map<string, number>()
+
+// Hooked by compaction to drop stale entries after a checkpoint replaces older messages.
+export function compactCache() {
+  _cache.clear()
+}
 
 export { hasEncoder }
 export { load }
