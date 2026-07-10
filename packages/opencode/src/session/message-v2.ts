@@ -143,6 +143,17 @@ function providerMeta(metadata: Record<string, any> | undefined) {
   return Object.keys(rest).length > 0 ? rest : undefined
 }
 
+// Preserve markdown file outputs during pruning — they contain fundamental rules/concepts
+// and the assistant would otherwise need to re-read them after every prune.
+function isMdPath(input: any): boolean {
+  if (!input) return false
+  const path = input.filePath || input.file_path || input.path || ""
+  return String(path).endsWith(".md")
+}
+function isMdOutput(part: ToolPart): boolean {
+  return isMdPath(part.state.input as any)
+}
+
 export function seamPruneBoundary(input: WithParts[], margin: number): number {
   let tokens = 0
   for (let i = input.length - 1; i >= 0; i--) {
@@ -329,7 +340,8 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
             // ones (< pruneMinChars) — they're cheap and often carry useful signal.
             const prunedInline =
               msgIndex < (options?.pruneBeforeIndex ?? -1) &&
-              part.state.output.length >= (options?.pruneMinChars ?? 500)
+              part.state.output.length >= (options?.pruneMinChars ?? 500) &&
+              !(isMdOutput(part))
             const outputText = part.state.time.compacted || prunedInline
               ? "[Old tool result content cleared]"
               : truncateToolOutput(part.state.output, options?.toolOutputMaxChars)
