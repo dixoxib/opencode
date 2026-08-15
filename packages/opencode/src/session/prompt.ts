@@ -13,7 +13,6 @@ import { Provider } from "@/provider/provider"
 import { type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
-import { SystemPrompt } from "./system"
 import { Instruction } from "./instruction"
 import { Plugin } from "../plugin"
 import { Flag } from "@opencode-ai/core/flag/flag"
@@ -121,7 +120,6 @@ export const layer = Layer.effect(
     const state = yield* SessionRunState.Service
     const revert = yield* SessionRevert.Service
     const summary = yield* SessionSummary.Service
-    const sys = yield* SystemPrompt.Service
     const llm = yield* LLM.Service
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
@@ -1211,10 +1209,7 @@ export const layer = Layer.effect(
             yield* events.publish(Session.Event.Error, { sessionID, error: error.toObject() })
             throw error
           }
-          const system = (yield* Effect.all([
-            instruction.system().pipe(Effect.orDie),
-            sys.skills(agent).pipe(Effect.orDie),
-          ]).pipe(Effect.map(([inst, skill]) => [...inst, ...(skill ? [skill] : [])])))
+          const system = yield* instruction.system().pipe(Effect.orDie)
 
           if (task?.type === "compaction" || task?.type === "seam") {
             // Prefix-preservation: advertise the same tool set the main turn does so the compaction/
@@ -1639,7 +1634,6 @@ export const defaultLayer = Layer.suspend(() =>
       Layer.mergeAll(
         Agent.defaultLayer,
         Database.defaultLayer,
-        SystemPrompt.defaultLayer,
         LLM.defaultLayer,
         CrossSpawnSpawner.defaultLayer,
         RuntimeFlags.defaultLayer,
@@ -1774,7 +1768,6 @@ export const node = LayerNode.make(layer, [
   SessionRunState.node,
   SessionRevert.node,
   SessionSummary.node,
-  SystemPrompt.node,
   LLM.node,
   EventV2Bridge.node,
   RuntimeFlags.node,

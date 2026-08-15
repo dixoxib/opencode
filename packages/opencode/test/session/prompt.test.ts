@@ -222,7 +222,6 @@ function makePrompt(input?: { processor?: "blocking" }) {
     Layer.provideMerge(registry),
     Layer.provideMerge(trunc),
     Layer.provide(Instruction.defaultLayer),
-    Layer.provide(SystemPrompt.defaultLayer),
     Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
     Layer.provideMerge(deps),
     Layer.provide(summary),
@@ -638,6 +637,51 @@ it.instance("seam request head stays byte-identical to the main turn (prefix pre
     expect(seamMessages.length).toBeGreaterThan(mainMessages.length)
     expect(JSON.stringify(seamMessages.slice(0, mainMessages.length))).toBe(JSON.stringify(mainMessages))
   }),
+  15000,
+)
+
+it.instance("seam (agent seam) request head stays byte-identical to the main turn", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => providerCfg(url))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Seam" })
+
+    // 1) Main turn.
+    yield* llm.text("first response")
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "hello world" }],
+    })
+    yield* prompt.loop({ sessionID: chat.id })
+    const mainHits = yield* llm.hits
+    expect(mainHits).toHaveLength(1)
+    const mainBody = mainHits[0].body
+
+    // 2) Real seam marker (agent "seam"), as /seam and auto-seam create it.
+    yield* llm.text("## Goal\n- seam summary")
+    yield* SessionCompaction.use.create({ sessionID: chat.id, agent: "seam", model: ref, auto: false })
+    yield* prompt.loop({ sessionID: chat.id })
+    const seamHits = yield* llm.hits
+    expect(seamHits.length).toBeGreaterThan(1)
+    const seamBody = seamHits.at(-1)!.body
+
+    expect(seamBody.tools).toBeDefined()
+    expect((seamBody.tools as unknown[]).length).toBeGreaterThan(0)
+    expect(JSON.stringify(seamBody.tools)).toBe(JSON.stringify(mainBody.tools))
+
+    const systemOf = (body: Record<string, unknown>) =>
+      JSON.stringify((body.messages as Array<{ role: string }>).filter((message) => message.role === "system"))
+    expect(systemOf(seamBody)).toBe(systemOf(mainBody))
+
+    const mainMessages = mainBody.messages as unknown[]
+    const seamMessages = seamBody.messages as unknown[]
+    expect(seamMessages.length).toBeGreaterThan(mainMessages.length)
+    expect(JSON.stringify(seamMessages.slice(0, mainMessages.length))).toBe(JSON.stringify(mainMessages))
+  }),
+  15000,
 )
 
 noLLMServer.instance.skip(

@@ -1,7 +1,4 @@
-import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { Context, Effect, Layer } from "effect"
-
-import { InstanceState } from "@/effect/instance-state"
+import type { Provider } from "@/provider/provider"
 
 import PROMPT_ANTHROPIC from "./prompt/anthropic.txt"
 import PROMPT_DEFAULT from "./prompt/default.txt"
@@ -13,15 +10,6 @@ import PROMPT_KIMI from "./prompt/kimi.txt"
 import PROMPT_CODEX from "./prompt/codex.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
 import PROMPT_DEEPSEEK from "./prompt/deepseek.txt"
-import type { Provider } from "@/provider/provider"
-import type { Agent } from "@/agent/agent"
-import { Permission } from "@/permission"
-import { Skill } from "@/skill"
-import { AbsolutePath } from "@opencode-ai/core/schema"
-import { Location } from "@opencode-ai/core/location"
-import { LocationServiceMap } from "@opencode-ai/core/location-layer"
-import { PluginBoot } from "@opencode-ai/core/plugin/boot"
-import { Reference } from "@opencode-ai/core/reference"
 
 export function provider(model: Provider.Model) {
   if (model.api.id.includes("gpt-4") || model.api.id.includes("o1") || model.api.id.includes("o3"))
@@ -37,41 +25,8 @@ export function provider(model: Provider.Model) {
   if (model.api.id.toLowerCase().includes("trinity")) return [PROMPT_TRINITY]
   if (model.api.id.toLowerCase().includes("kimi")) return [PROMPT_KIMI]
   if (model.api.id.toLowerCase().includes("deepseek")) return [PROMPT_DEEPSEEK]
+  if (model.providerID.startsWith("llamacpp")) return [PROMPT_DEEPSEEK]
   return [PROMPT_DEFAULT]
 }
-
-export interface Interface {
-  readonly skills: (agent: Agent.Info) => Effect.Effect<string | undefined>
-}
-
-export class Service extends Context.Service<Service, Interface>()("@opencode/SystemPrompt") {}
-
-export const layer = Layer.effect(
-  Service,
-  Effect.gen(function* () {
-    const skill = yield* Skill.Service
-    const locations = yield* LocationServiceMap
-
-    return Service.of({
-      skills: Effect.fn("SystemPrompt.skills")(function* (_agent: Agent.Info) {
-        const list = yield* skill.available()
-
-        return [
-          "Skills provide specialized instructions and workflows for specific tasks.",
-          "Use the skill tool to load a skill when a task matches its description.",
-          // the agents seem to ingest the information about skills a bit better if we present a more verbose
-          // version of them here and a less verbose version in tool description, rather than vice versa.
-          Skill.fmt(list, { verbose: true }),
-        ].join("\n")
-      }),
-    })
-  }),
-)
-
-export const defaultLayer = layer.pipe(Layer.provide(Skill.defaultLayer), Layer.provide(LocationServiceMap.layer))
-
-const locationServiceMapNode = LayerNode.make(LocationServiceMap.layer, [])
-
-export const node = LayerNode.make(layer, [Skill.node, locationServiceMapNode])
 
 export * as SystemPrompt from "./system"
