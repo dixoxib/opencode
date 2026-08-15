@@ -25,14 +25,20 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
 
   if (!flags.experimentalPlanMode) {
     if (input.agent.name === "plan") {
-      userMessage.parts.push({
-        id: PartID.ascending(),
-        messageID: userMessage.info.id,
-        sessionID: userMessage.info.sessionID,
-        type: "text",
-        text: PROMPT_PLAN,
-        synthetic: true,
-      })
+      const alreadyInjectedPlan = userMessage.parts.some(
+        (p) => (p as any).synthetic && (p as any).text === PROMPT_PLAN,
+      )
+      if (!alreadyInjectedPlan) {
+        const part = yield* sessions.updatePart({
+          id: PartID.ascending(),
+          messageID: userMessage.info.id,
+          sessionID: userMessage.info.sessionID,
+          type: "text",
+          text: PROMPT_PLAN,
+          synthetic: true,
+        })
+        userMessage.parts.push(part)
+      }
     }
     const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
     const alreadyInjected = input.messages.some((msg) =>

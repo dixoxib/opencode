@@ -53,6 +53,14 @@ function isMdPath(input: any): boolean {
 function isMdOutput(part: SessionV1.ToolPart): boolean {
   return isMdPath(part.state.input as any)
 }
+
+function seamPruneBeforeIndex(cfg: ConfigV1.Info, msgs: SessionV1.WithParts[]) {
+  if (cfg.seam?.prune === false || process.env["OPENCODE_SEAM_PRUNE"] === "false") return -1
+  return MessageV2.seamPruneBoundary(
+    msgs,
+    Number(Flag.OPENCODE_SEAM_PRUNE_MARGIN) || (cfg.seam?.prune_margin ?? 50_000),
+  )
+}
 const COMPACTION_INSTRUCTIONS = `You are an anchored context summarization assistant for coding sessions.
 Summarize only the conversation history you are given. The newest turns may be kept verbatim outside your summary, so focus on the older context that still matters for continuing the work.
 If the prompt includes a <previous-summary> block, treat it as the current anchored summary. Update it with the new history by preserving still-true details, removing stale details, and merging in new facts.
@@ -412,7 +420,9 @@ export const layer = Layer.effect(
       }
       const isSeam = parent.info.agent === "seam"
       const userMessage = parent.info
-      const compactionPart = parent.parts.find((part): part is SessionV1.CompactionPart => part.type === "compaction")
+      const compactionPart = parent.parts.find(
+        (part): part is SessionV1.CompactionPart => part.type === "compaction" || part.type === "seam",
+      )
 
       let messages = input.messages
       let replay:
@@ -475,10 +485,7 @@ export const layer = Layer.effect(
       // No stripMedia / toolOutputMaxChars: the conversation must serialize byte-identically to the
       // main turn (prompt.ts uses toModelMessagesEffect(msgs, model) with no options) for the cache.
       const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
-        pruneBeforeIndex: MessageV2.seamPruneBoundary(
-          msgs,
-          Number(Flag.OPENCODE_SEAM_PRUNE_MARGIN) || (cfg.seam?.prune_margin ?? 50_000),
-        ),
+        pruneBeforeIndex: seamPruneBeforeIndex(cfg, msgs),
         pruneMinChars: Number(Flag.OPENCODE_SEAM_PRUNE_MIN_CHARS) || 500,
       })
       const tailIndex = selected.tail_start_id
@@ -486,10 +493,7 @@ export const layer = Layer.effect(
         : -1
       const recent =
         tailIndex < 0 ? "" : JSON.stringify(yield* MessageV2.toModelMessagesEffect(history.slice(tailIndex), model, {
-          pruneBeforeIndex: MessageV2.seamPruneBoundary(
-            history.slice(tailIndex),
-            Number(Flag.OPENCODE_SEAM_PRUNE_MARGIN) || (cfg.seam?.prune_margin ?? 50_000),
-          ),
+          pruneBeforeIndex: seamPruneBeforeIndex(cfg, history.slice(tailIndex)),
           pruneMinChars: Number(Flag.OPENCODE_SEAM_PRUNE_MIN_CHARS) || 500,
         }))
       const ctx = yield* InstanceState.context

@@ -83,6 +83,16 @@ delete process.env["OTEL_EXPORTER_OTLP_ENDPOINT"]
 delete process.env["OTEL_EXPORTER_OTLP_HEADERS"]
 delete process.env["OTEL_RESOURCE_ATTRIBUTES"]
 
+// Clear ambient opencode feature flags so tests are deterministic regardless of the developer's shell.
+delete process.env["OPENCODE_CONTEXT_LIMIT"]
+delete process.env["OPENCODE_MAX_OUTPUT_TOKENS"]
+delete process.env["OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"]
+delete process.env["OPENCODE_COMPACTION_RESERVED"]
+delete process.env["OPENCODE_COMPACTION_PRUNE_PROTECT"]
+delete process.env["OPENCODE_COMPACTION_PRUNE_MINIMUM"]
+delete process.env["OPENCODE_EXPERIMENTAL_COMPACTION_PRESERVE_PREFIX"]
+delete process.env["OPENCODE_DISABLE_CHANNEL_DB"]
+
 // Use in-memory sqlite
 process.env["OPENCODE_DB"] = ":memory:"
 
