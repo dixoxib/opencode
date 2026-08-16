@@ -607,7 +607,7 @@ it.instance("seam request head stays byte-identical to the main turn (prefix pre
     yield* SessionCompaction.use.create({ sessionID: chat.id, agent: "compaction", model: ref, auto: false })
     yield* prompt.loop({ sessionID: chat.id })
     const seamHits = yield* llm.hits
-    expect(seamHits.length).toBeGreaterThan(1)
+    expect(seamHits.length).toBe(2)
     const seamBody = seamHits.at(-1)!.body
 
     // tools: byte-identical and non-empty (the pre-existing bug advertised none for compaction/seam,
@@ -665,7 +665,7 @@ it.instance("seam (agent seam) request head stays byte-identical to the main tur
     yield* SessionCompaction.use.create({ sessionID: chat.id, agent: "seam", model: ref, auto: false })
     yield* prompt.loop({ sessionID: chat.id })
     const seamHits = yield* llm.hits
-    expect(seamHits.length).toBeGreaterThan(1)
+    expect(seamHits.length).toBe(2)
     const seamBody = seamHits.at(-1)!.body
 
     expect(seamBody.tools).toBeDefined()
