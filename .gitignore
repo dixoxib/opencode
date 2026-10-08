@@ -35,5 +35,5 @@ UPCOMING_CHANGELOG.md
 logs/
 *.bun-build
 tsconfig.tsbuildinfo
-opencode
-opencode
+/opencode
+/opencode
