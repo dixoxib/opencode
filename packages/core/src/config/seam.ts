@@ -22,4 +22,10 @@ export class Info extends Schema.Class<Info>("ConfigV2.Seam")({
   prune_min_chars: PositiveInt.pipe(Schema.optional).annotate({
     description: "Minimum tool output length (chars) to trigger pruning (default: 1000)",
   }),
+  output_tokens: PositiveInt.pipe(Schema.optional).annotate({
+    description: "Max output tokens reserved for the seam summary request (default 32768)",
+  }),
+  preserve_tokens: PositiveInt.pipe(Schema.optional).annotate({
+    description: "Cap on recent tokens kept verbatim by the shared seam/compaction tail selection (default 32000)",
+  }),
 }) {}

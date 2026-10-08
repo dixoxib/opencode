@@ -180,6 +180,12 @@ export const Info = Schema.Struct({
       prune_margin: Schema.optional(PositiveInt).annotate({
         description: "Token distance from current position before pruning older seam blocks (default: 50000)",
       }),
+      output_tokens: Schema.optional(PositiveInt).annotate({
+        description: "Max output tokens reserved for the seam summary request (default 32768)",
+      }),
+      preserve_tokens: Schema.optional(PositiveInt).annotate({
+        description: "Cap on recent tokens kept verbatim by the shared seam/compaction tail selection (default 32000)",
+      }),
     }),
   ),
   experimental: Schema.optional(

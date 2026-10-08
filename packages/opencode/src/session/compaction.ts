@@ -41,7 +41,7 @@ export const PRUNE_PROTECT = 40_000
 const PRUNE_PROTECTED_TOOLS = ["skill"]
 // Proactive output sizing for the summary request (prefix-preservation): reserve less output so the
 // byte-identical input always fits, instead of shrinking/truncating the prompt.
-const SUMMARY_OUTPUT_MAX = 4_096
+const SUMMARY_OUTPUT_DEFAULT = 32_768
 const SUMMARY_OUTPUT_MIN = 512
 const SUMMARY_OUTPUT_MARGIN = 1_000
 // OpenCode-DS-V4: preserve markdown file outputs during pruning
@@ -87,7 +87,7 @@ const SEAM_INSTRUCTIONS = `You are summarizing a coding session to preserve cont
 - [File paths, identifiers, configuration values that must survive compaction.]`
 const DEFAULT_TAIL_TURNS = 2
 const MIN_PRESERVE_RECENT_TOKENS = 2_000
-const MAX_PRESERVE_RECENT_TOKENS = 8_000
+const MAX_PRESERVE_RECENT_TOKENS = 32_000
 type Turn = {
   start: number
   end: number
@@ -133,10 +133,16 @@ function completedCompactions(messages: SessionV1.WithParts[]) {
   })
 }
 
+function seamOutputMax(cfg: ConfigV1.Info) {
+  return Number(Flag.OPENCODE_SEAM_OUTPUT_TOKENS) || cfg.seam?.output_tokens || SUMMARY_OUTPUT_DEFAULT
+}
+
 function preserveRecentBudget(input: { cfg: ConfigV1.Info; model: Provider.Model }) {
   return (
-    input.cfg.compaction?.preserve_recent_tokens ??
-    Math.min(MAX_PRESERVE_RECENT_TOKENS, Math.max(MIN_PRESERVE_RECENT_TOKENS, Math.floor(usable(input) * 0.25)))
+    Number(Flag.OPENCODE_SEAM_PRESERVE_TOKENS) ||
+    input.cfg.seam?.preserve_tokens ||
+    (input.cfg.compaction?.preserve_recent_tokens ??
+      Math.min(MAX_PRESERVE_RECENT_TOKENS, Math.max(MIN_PRESERVE_RECENT_TOKENS, Math.floor(usable(input) * 0.25))))
   )
 }
 
@@ -539,7 +545,8 @@ export const layer = Layer.effect(
       // Reserve less output (never shrink the byte-identical input) so the summary fits. Only when
       // the input alone approaches the limit does this fall to the floor and let overflow surface.
       const contextLimit = model.limit.context ?? 0
-      const desiredOutput = Math.min(model.limit.output ?? SUMMARY_OUTPUT_MAX, SUMMARY_OUTPUT_MAX)
+      const outputCap = seamOutputMax(cfg)
+      const desiredOutput = Math.min(model.limit.output ?? outputCap, outputCap)
       const inputEstimate = Token.estimate(
         JSON.stringify({ system: input.system ?? [], tools: input.tools ?? {}, messages: requestMessages }),
       )

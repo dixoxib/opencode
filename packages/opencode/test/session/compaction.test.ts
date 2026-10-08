@@ -1074,10 +1074,15 @@ describe("session.compaction.process", () => {
         const msg = yield* createUserMessage(session.id, "hello")
         const msgs = yield* ssn.messages({ sessionID: session.id })
         yield* SessionCompaction.use.process({ parentID: msg.id, messages: msgs, sessionID: session.id, auto: false })
-        // The model advertises 32000 output tokens, but the summary reserves only the 4096 summary
+        // The model advertises 128000 output tokens, but the summary reserves only the 32768 summary
         // budget so the byte-identical input always has headroom (prefix-preservation, no truncation).
-        expect(capturedMax).toBe(4096)
-      }).pipe(withCompaction({ llm: stub.layer }))
+        expect(capturedMax).toBe(32_768)
+      }).pipe(
+        withCompaction({
+          llm: stub.layer,
+          provider: ProviderTest.fake({ model: createModel({ context: 100_000, output: 128_000 }) }),
+        }),
+      )
     },
   )
 
