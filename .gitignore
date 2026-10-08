@@ -1,5 +1,8 @@
 .DS_Store
 node_modules
+.bun/
+session-*.md
+ses_*
 .worktrees
 .sst
 .env
