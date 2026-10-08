@@ -374,7 +374,7 @@ export const ReadTool = Tool.define<
       yield* warm(filepath)
 
       if (loaded.length > 0) {
-        output += `\n\n<system-reminder>\n${loaded.map((item) => item.content).join("\n\n")}\n</system-reminder>`
+        output += `\n\n<interface-note>\n${loaded.map((item) => item.content).join("\n\n")}\n</interface-note>`
       }
 
       return {

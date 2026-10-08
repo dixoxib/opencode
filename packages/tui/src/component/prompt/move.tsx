@@ -12,7 +12,7 @@ import { useHomeSessionDestination } from "../../routes/home/session-destination
 import { useProject } from "../../context/project"
 
 function moveReminderText(directory: string) {
-  return `<system-reminder>The user has changed the current working directory to "${directory}". This is still the same project but at a possibly new location; take this into account when working with any files from now on.</system-reminder>`
+  return `<interface-note>The user has changed the current working directory to "${directory}". This is still the same project but at a possibly new location; take this into account when working with any files from now on.</interface-note>`
 }
 
 export function usePromptMove(input: { projectID: () => string | undefined; sessionID: () => string | undefined }) {

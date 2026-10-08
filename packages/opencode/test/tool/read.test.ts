@@ -573,7 +573,7 @@ describe("tool.read loaded instructions", () => {
 
       const result = yield* exec(dir, { filePath: path.join(dir, "subdir", "nested", "test.txt") })
       expect(result.output).toContain("test content")
-      expect(result.output).toContain("system-reminder")
+      expect(result.output).toContain("interface-note")
       expect(result.output).toContain("Test Instructions")
       expect(result.metadata.loaded).toBeDefined()
       expect(result.metadata.loaded).toContain(path.join(dir, "subdir", "AGENTS.md"))
