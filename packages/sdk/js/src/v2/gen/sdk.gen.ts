@@ -187,8 +187,6 @@ import type {
   SessionDiffResponses,
   SessionForkErrors,
   SessionForkResponses,
-  SessionSwitchSeamErrors,
-  SessionSwitchSeamResponses,
   SessionGetErrors,
   SessionGetResponses,
   SessionInitErrors,
@@ -203,6 +201,8 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
+  SessionPruneCompactErrors,
+  SessionPruneCompactResponses,
   SessionRevertErrors,
   SessionRevertResponses,
   SessionShareErrors,
@@ -213,6 +213,8 @@ import type {
   SessionStatusResponses,
   SessionSummarizeErrors,
   SessionSummarizeResponses,
+  SessionSwitchSeamErrors,
+  SessionSwitchSeamResponses,
   SessionTodoErrors,
   SessionTodoResponses,
   SessionUnrevertErrors,
@@ -3893,6 +3895,49 @@ export class Session2 extends HeyApiClient {
   }
 
   /**
+   * Prune-compact session
+   *
+   * Create a new pruned fork of the session, keeping text parts and the tail from the boundary onward while folding tool calls and reasoning into a synthetic trace. Without a messageID the boundary is the last user message.
+   */
+  public pruneCompact<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+      messageID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "messageID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionPruneCompactResponses, SessionPruneCompactErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/prune-compact",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Switch seam to compaction
+   *
    * Convert a seam checkpoint into a compaction in place, collapsing earlier context.
    */
   public switchSeam<ThrowOnError extends boolean = false>(
@@ -3900,7 +3945,7 @@ export class Session2 extends HeyApiClient {
       sessionID: string
       directory?: string
       workspace?: string
-      messageID: string
+      messageID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {

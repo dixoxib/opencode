@@ -30,6 +30,7 @@ import type { SQL } from "drizzle-orm"
 import { PartTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { ProjectTable } from "@opencode-ai/core/project/sql"
 import { MessageV2 } from "./message-v2"
+import { SessionPrune } from "./prune"
 import type { InstanceContext } from "../project/instance-context"
 import { InstanceState } from "@/effect/instance-state"
 import { Snapshot } from "@/snapshot"
@@ -474,6 +475,7 @@ export interface Interface {
     workspaceID?: WorkspaceV2.ID
   }) => Effect.Effect<Info>
   readonly fork: (input: { sessionID: SessionID; messageID?: MessageID }) => Effect.Effect<Info, NotFound>
+  readonly pruneCompact: (input: { sessionID: SessionID; messageID?: MessageID }) => Effect.Effect<Info, NotFound>
   readonly switchSeam: (input: { sessionID: SessionID; messageID: MessageID }) => Effect.Effect<Info, NotFound>
   readonly touch: (sessionID: SessionID) => Effect.Effect<void>
   readonly get: (id: SessionID) => Effect.Effect<Info, NotFound>
@@ -777,6 +779,56 @@ export const layer: Layer.Layer<
       return session
     })
 
+    // Fork + prune into a fresh session (non-destructive): keeps text parts and
+    // the tail from the boundary onward, discards step/reasoning/tool parts into a
+    // synthetic trace, and fuses adjacent same-role messages. The boundary
+    // defaults to the last user message; a seam id moves it there.
+    const pruneCompact = Effect.fn("Session.pruneCompact")(function* (input: {
+      sessionID: SessionID
+      messageID?: MessageID
+    }) {
+      const ctx = yield* InstanceState.context
+      const original = yield* get(input.sessionID)
+      const title = getForkedTitle(original.title)
+      const session = yield* createNext({
+        directory: ctx.directory,
+        path: sessionPath(ctx.worktree, ctx.directory),
+        workspaceID: original.workspaceID,
+        title,
+        metadata: structuredClone(original.metadata),
+      })
+      const msgs = yield* messages({ sessionID: input.sessionID })
+      const pruned = SessionPrune.pruneCompactMessages(msgs, input.messageID)
+      const idMap = new Map<string, MessageID>()
+
+      for (const msg of pruned) {
+        const newID = MessageID.ascending()
+        idMap.set(msg.info.id, newID)
+
+        const parentID = msg.info.role === "assistant" && msg.info.parentID ? idMap.get(msg.info.parentID) : undefined
+        const cloned = yield* updateMessage({
+          ...msg.info,
+          sessionID: session.id,
+          id: newID,
+          ...(parentID && { parentID }),
+        })
+
+        for (const part of msg.parts) {
+          const p: SessionV1.Part = {
+            ...part,
+            id: PartID.ascending(),
+            messageID: cloned.id,
+            sessionID: session.id,
+          }
+          if (p.type === "compaction" && p.tail_start_id) {
+            p.tail_start_id = idMap.get(p.tail_start_id)
+          }
+          yield* updatePart(p)
+        }
+      }
+      return session
+    })
+
     // Convert a seam into a compaction IN PLACE (reversible marker flip, no copy):
     // flip the seam marker (user agent + part type) and its summary assistant from "seam"
     // to "compaction". With no tail_start_id, filterCompacted then drops everything before
@@ -990,6 +1042,7 @@ export const layer: Layer.Layer<
       listGlobal,
       create,
       fork,
+      pruneCompact,
       switchSeam,
       touch,
       get,

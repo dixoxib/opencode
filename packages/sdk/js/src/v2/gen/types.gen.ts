@@ -183,6 +183,7 @@ export type Session = {
     input: number
     output: number
     reasoning: number
+    since_seam?: number
     cache: {
       read: number
       write: number
@@ -615,7 +616,7 @@ export type CompactionPart = {
   id: string
   sessionID: string
   messageID: string
-  type: "compaction"
+  type: "compaction" | "seam"
   auto: boolean
   overflow?: boolean
   tail_start_id?: string
@@ -1166,8 +1167,8 @@ export type GlobalEvent = {
         properties: {
           timestamp: number
           sessionID: string
+          reason: "auto" | "manual" | "seam"
           messageID: string
-          reason: "auto" | "manual"
         }
       }
     | {
@@ -1187,7 +1188,7 @@ export type GlobalEvent = {
           timestamp: number
           sessionID: string
           messageID: string
-          reason: "auto" | "manual"
+          reason: "auto" | "manual" | "seam"
           text: string
           recent: string
         }
@@ -1419,6 +1420,7 @@ export type GlobalEvent = {
             | "session.share"
             | "session.interrupt"
             | "session.compact"
+            | "session.seam"
             | "session.page.up"
             | "session.page.down"
             | "session.line.up"
@@ -2026,6 +2028,15 @@ export type Config = {
     preserve_recent_tokens?: number
     reserved?: number
   }
+  seam?: {
+    enabled?: boolean
+    block_size?: number
+    interval?: number
+    prune?: boolean
+    prune_margin?: number
+    output_tokens?: number
+    preserve_tokens?: number
+  }
   experimental?: {
     disable_paste_summary?: boolean
     batch_tool?: boolean
@@ -2219,6 +2230,7 @@ export type GlobalSession = {
     input: number
     output: number
     reasoning: number
+    since_seam?: number
     cache: {
       read: number
       write: number
@@ -2638,6 +2650,7 @@ export type EventTuiCommandExecute = {
       | "session.share"
       | "session.interrupt"
       | "session.compact"
+      | "session.seam"
       | "session.page.up"
       | "session.page.down"
       | "session.line.up"
@@ -2876,6 +2889,7 @@ export type EventTuiCommandExecute2 = {
       | "session.share"
       | "session.interrupt"
       | "session.compact"
+      | "session.seam"
       | "session.page.up"
       | "session.page.down"
       | "session.line.up"
@@ -3627,8 +3641,8 @@ export type SyncEventSessionNextCompactionStarted = {
     data: {
       timestamp: number
       sessionID: string
+      reason: "auto" | "manual" | "seam"
       messageID: string
-      reason: "auto" | "manual"
     }
   }
 }
@@ -3645,7 +3659,7 @@ export type SyncEventSessionNextCompactionEnded = {
       timestamp: number
       sessionID: string
       messageID: string
-      reason: "auto" | "manual"
+      reason: "auto" | "manual" | "seam"
       text: string
       recent: string
     }
@@ -3970,7 +3984,7 @@ export type SessionMessageAssistant = {
 
 export type SessionMessageCompaction = {
   type: "compaction"
-  reason: "auto" | "manual"
+  reason: "auto" | "manual" | "seam"
   summary: string
   recent: string
   id: string
@@ -5054,8 +5068,8 @@ export type V2EventSessionNextCompactionStarted = {
   data: {
     timestamp: number
     sessionID: string
+    reason: "auto" | "manual" | "seam"
     messageID: string
-    reason: "auto" | "manual"
   }
 }
 
@@ -5095,7 +5109,7 @@ export type V2EventSessionNextCompactionEnded = {
     timestamp: number
     sessionID: string
     messageID: string
-    reason: "auto" | "manual"
+    reason: "auto" | "manual" | "seam"
     text: string
     recent: string
   }
@@ -5577,6 +5591,7 @@ export type V2EventTuiCommandExecute = {
       | "session.share"
       | "session.interrupt"
       | "session.compact"
+      | "session.seam"
       | "session.page.up"
       | "session.page.down"
       | "session.line.up"
@@ -6492,8 +6507,8 @@ export type EventSessionNextCompactionStarted = {
   properties: {
     timestamp: number
     sessionID: string
+    reason: "auto" | "manual" | "seam"
     messageID: string
-    reason: "auto" | "manual"
   }
 }
 
@@ -6515,7 +6530,7 @@ export type EventSessionNextCompactionEnded = {
     timestamp: number
     sessionID: string
     messageID: string
-    reason: "auto" | "manual"
+    reason: "auto" | "manual" | "seam"
     text: string
     recent: string
   }
@@ -9816,6 +9831,56 @@ export type SessionForkResponses = {
 
 export type SessionForkResponse = SessionForkResponses[keyof SessionForkResponses]
 
+export type SessionPruneCompactData = {
+  body?: {
+    messageID?: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/prune-compact"
+}
+
+export type SessionPruneCompactErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionPruneCompactError = SessionPruneCompactErrors[keyof SessionPruneCompactErrors]
+
+export type SessionPruneCompactResponses = {
+  /**
+   * 200
+   */
+  200: Session
+}
+
+export type SessionPruneCompactResponse = SessionPruneCompactResponses[keyof SessionPruneCompactResponses]
+
+export type SessionSwitchSeamData = {
+  body?: {
+    messageID: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/switch-seam"
+}
+
 export type SessionSwitchSeamErrors = {
   /**
    * BadRequest | InvalidRequestError
@@ -9837,7 +9902,6 @@ export type SessionSwitchSeamResponses = {
 }
 
 export type SessionSwitchSeamResponse = SessionSwitchSeamResponses[keyof SessionSwitchSeamResponses]
-
 
 export type SessionAbortData = {
   body?: never

@@ -53,6 +53,7 @@ import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSwitchSeamFromTimeline } from "./dialog-switch-seam-from-timeline"
+import { DialogPruneCompactFromTimeline } from "./dialog-prune-compact-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar } from "./sidebar"
 import { SubagentFooter } from "./subagent-footer.tsx"
@@ -120,6 +121,7 @@ const sessionBindingCommands = [
   "session.rename",
   "session.timeline",
   "session.fork",
+  "session.prunecompact",
   "session.switchseam",
   "session.compact",
   "session.unshare",
@@ -539,6 +541,29 @@ export function Session() {
       run: () => {
         dialog.replace(() => (
           <DialogForkFromTimeline
+            onMove={(messageID) => {
+              if (!messageID) return
+              const child = scroll.getChildren().find((child) => {
+                return child.id === messageID
+              })
+              if (child) scroll.scrollBy(child.y - scroll.y - 1)
+            }}
+            sessionID={route.sessionID}
+          />
+        ))
+      },
+    },
+    {
+      title: "Prune-compact session",
+      value: "session.prunecompact",
+      category: "Session",
+      slash: {
+        name: "prunecompact",
+        aliases: ["prune"],
+      },
+      run: () => {
+        dialog.replace(() => (
+          <DialogPruneCompactFromTimeline
             onMove={(messageID) => {
               if (!messageID) return
               const child = scroll.getChildren().find((child) => {

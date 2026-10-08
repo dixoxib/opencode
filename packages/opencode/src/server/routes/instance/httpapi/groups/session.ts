@@ -58,6 +58,7 @@ export const UpdatePayload = Schema.Struct({
 })
 export const ForkPayload = Schema.Struct(Struct.omit(Session.ForkInput.fields, ["sessionID"]))
 export const SwitchSeamPayload = Schema.Struct({ messageID: MessageID })
+export const PruneCompactPayload = Schema.Struct({ messageID: Schema.optional(MessageID) })
 export const InitPayload = Schema.Struct({
   modelID: ModelV2.ID,
   providerID: ProviderV2.ID,
@@ -90,6 +91,7 @@ export const SessionPaths = {
   remove: `${root}/:sessionID`,
   update: `${root}/:sessionID`,
   fork: `${root}/:sessionID/fork`,
+  pruneCompact: `${root}/:sessionID/prune-compact`,
   switchSeam: `${root}/:sessionID/switch-seam`,
   abort: `${root}/:sessionID/abort`,
   share: `${root}/:sessionID/share`,
@@ -251,6 +253,20 @@ export const SessionApi = HttpApi.make("session")
             identifier: "session.fork",
             summary: "Fork session",
             description: "Create a new session by forking an existing session at a specific message point.",
+          }),
+        ),
+        HttpApiEndpoint.post("pruneCompact", SessionPaths.pruneCompact, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          payload: [HttpApiSchema.NoContent, PruneCompactPayload],
+          success: described(Session.Info, "200"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.pruneCompact",
+            summary: "Prune-compact session",
+            description:
+              "Create a new pruned fork of the session, keeping text parts and the tail from the boundary onward while folding tool calls and reasoning into a synthetic trace. Without a messageID the boundary is the last user message.",
           }),
         ),
         HttpApiEndpoint.post("switchSeam", SessionPaths.switchSeam, {

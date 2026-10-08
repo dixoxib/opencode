@@ -31,6 +31,7 @@ import {
   MessagesQuery,
   PermissionResponsePayload,
   PromptPayload,
+  PruneCompactPayload,
   RevertPayload,
   ShellPayload,
   SummarizePayload,
@@ -226,6 +227,32 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
         Effect.mapError(() => new HttpApiError.BadRequest({})),
       )
       return yield* fork({ params: ctx.params, payload })
+    })
+
+    const pruneCompact = Effect.fn("SessionHttpApi.pruneCompact")(function* (ctx: {
+      params: { sessionID: SessionID }
+      payload?: typeof PruneCompactPayload.Type
+    }) {
+      return yield* SessionError.mapStorageNotFound(
+        session.pruneCompact({
+          sessionID: ctx.params.sessionID,
+          messageID: ctx.payload?.messageID,
+        }),
+      )
+    })
+
+    const pruneCompactRaw = Effect.fn("SessionHttpApi.pruneCompactRaw")(function* (ctx: {
+      params: { sessionID: SessionID }
+      request: HttpServerRequest.HttpServerRequest
+    }) {
+      const body = yield* Effect.orDie(ctx.request.text)
+      if (body.trim().length === 0) return yield* pruneCompact({ params: ctx.params })
+
+      const json = yield* tryParseJson(body)
+      const payload = yield* Schema.decodeUnknownEffect(PruneCompactPayload)(json).pipe(
+        Effect.mapError(() => new HttpApiError.BadRequest({})),
+      )
+      return yield* pruneCompact({ params: ctx.params, payload })
     })
 
     const switchSeam = Effect.fn("SessionHttpApi.switchSeam")(function* (ctx: {
@@ -430,6 +457,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("remove", remove)
       .handle("update", update)
       .handleRaw("fork", forkRaw)
+      .handleRaw("pruneCompact", pruneCompactRaw)
       .handle("switchSeam", switchSeam)
       .handle("abort", abort)
       .handle("init", init)
