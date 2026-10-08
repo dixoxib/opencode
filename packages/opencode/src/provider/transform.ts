@@ -22,8 +22,15 @@ export const OUTPUT_TOKEN_MAX = 32_000
 // branch that requests it stays in lockstep.
 const INCLUDE_ENCRYPTED_REASONING = ["reasoning.encrypted_content"] as const
 
+const SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g
+
 export function sanitizeSurrogates(content: string) {
-  return content.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD")
+  // Fast path: most strings have no surrogates — bail out after one charCodeAt scan
+  for (let i = 0; i < content.length; i++) {
+    const c = content.charCodeAt(i)
+    if (c >= 0xd800 && c <= 0xdfff) return content.replace(SURROGATE_RE, "\uFFFD")
+  }
+  return content
 }
 
 // Maps npm package to the key the AI SDK expects for providerOptions
