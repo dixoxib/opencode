@@ -83,6 +83,10 @@ interface ProcessorContext extends Input {
   currentTextID: string | undefined
   reasoningMap: Record<string, SessionV1.ReasoningPart>
   v2AssistantMessageID: SessionMessage.ID | undefined
+  /** Accumulated deltas not yet flushed (partID → accumulated text) */
+  pendingDelta: Record<string, string>
+  /** Last flush timestamp per partID for throttling */
+  deltaLastFlush: Record<string, number>
 }
 
 type StreamEvent = LLMEvent
@@ -125,6 +129,8 @@ export const layer = Layer.effect(
         currentTextID: undefined,
         reasoningMap: {},
         v2AssistantMessageID: undefined,
+        pendingDelta: {},
+        deltaLastFlush: {},
       }
       const mirrorAssistant = flags.experimentalEventSystem && !input.assistantMessage.summary
       let aborted = false
@@ -243,6 +249,24 @@ export const layer = Layer.effect(
         }
         yield* settleToolCall(toolCallID)
         return true
+      })
+
+      const flushPendingDeltas = Effect.fnUntraced(function* () {
+        const pending = ctx.pendingDelta
+        ctx.pendingDelta = {}
+        for (const [key, accumulated] of Object.entries(pending)) {
+          const reasoningPart = Object.values(ctx.reasoningMap).find((p) => p.id === key)
+          const part = reasoningPart ?? (ctx.currentText?.id === key ? ctx.currentText : undefined)
+          if (!part || !accumulated) continue
+          yield* session.updatePartDelta({
+            sessionID: part.sessionID,
+            messageID: part.messageID,
+            partID: part.id,
+            field: "text",
+            delta: accumulated,
+          })
+          ctx.deltaLastFlush[key] = Date.now()
+        }
       })
 
       const finishReasoning = Effect.fn("SessionProcessor.finishReasoning")(function* (reasoningID: string) {
@@ -394,7 +418,7 @@ export const layer = Layer.effect(
             yield* session.updatePart(ctx.reasoningMap[value.id])
             return
 
-          case "reasoning-delta":
+          case "reasoning-delta": {
             // Match dev: silently drop orphan deltas (no preceding reasoning-start).
             if (!(value.id in ctx.reasoningMap)) return
             ctx.reasoningMap[value.id].text += value.text
@@ -408,16 +432,17 @@ export const layer = Layer.effect(
                 timestamp: DateTime.makeUnsafe(Date.now()),
               })
             }
-            yield* session.updatePartDelta({
-              sessionID: ctx.reasoningMap[value.id].sessionID,
-              messageID: ctx.reasoningMap[value.id].messageID,
-              partID: ctx.reasoningMap[value.id].id,
-              field: "text",
-              delta: value.text,
-            })
+            // Throttle: accumulate deltas, flush at most every 50ms per part
+            const pid = ctx.reasoningMap[value.id].id
+            ctx.pendingDelta[pid] = (ctx.pendingDelta[pid] ?? "") + value.text
+            if (Date.now() - (ctx.deltaLastFlush[pid] ?? 0) >= 50) {
+              yield* flushPendingDeltas()
+            }
             return
+          }
 
           case "reasoning-end":
+            yield* flushPendingDeltas()
             if (value.providerMetadata && value.id in ctx.reasoningMap) {
               ctx.reasoningMap[value.id].metadata = value.providerMetadata
             }
@@ -425,6 +450,7 @@ export const layer = Layer.effect(
             return
 
           case "tool-input-start":
+            yield* flushPendingDeltas()
             if (ctx.assistantMessage.summary) {
               throw new Error(`Tool call not allowed while generating summary: ${value.name}`)
             }
@@ -691,6 +717,7 @@ export const layer = Layer.effect(
             return
 
           case "step-finish": {
+            yield* flushPendingDeltas()
             const completedSnapshot = yield* snapshot.track()
             yield* Effect.forEach(Object.keys(ctx.reasoningMap), finishReasoning)
             const usage = Session.getUsage({
@@ -781,7 +808,7 @@ export const layer = Layer.effect(
             yield* session.updatePart(ctx.currentText)
             return
 
-          case "text-delta":
+          case "text-delta": {
             if (!ctx.currentText) return
             ctx.currentText.text += value.text
             if (value.providerMetadata) ctx.currentText.metadata = value.providerMetadata
@@ -794,17 +821,18 @@ export const layer = Layer.effect(
                 timestamp: DateTime.makeUnsafe(Date.now()),
               })
             }
-            yield* session.updatePartDelta({
-              sessionID: ctx.currentText.sessionID,
-              messageID: ctx.currentText.messageID,
-              partID: ctx.currentText.id,
-              field: "text",
-              delta: value.text,
-            })
+            // Throttle: accumulate deltas, flush at most every 50ms per part
+            const pid = ctx.currentText.id
+            ctx.pendingDelta[pid] = (ctx.pendingDelta[pid] ?? "") + value.text
+            if (Date.now() - (ctx.deltaLastFlush[pid] ?? 0) >= 50) {
+              yield* flushPendingDeltas()
+            }
             return
+          }
 
           case "text-end":
             if (!ctx.currentText) return
+            yield* flushPendingDeltas()
             // oxlint-disable-next-line no-self-assign -- reactivity trigger
             ctx.currentText.text = ctx.currentText.text
             ctx.currentText.text = (yield* plugin.trigger(
@@ -844,6 +872,7 @@ export const layer = Layer.effect(
       })
 
       const cleanup = Effect.fn("SessionProcessor.cleanup")(function* () {
+        yield* flushPendingDeltas()
         if (ctx.snapshot) {
           const patch = yield* snapshot.patch(ctx.snapshot)
           if (patch.files.length) {
