@@ -31,6 +31,7 @@ import { inArray } from "drizzle-orm"
 import { lt } from "drizzle-orm"
 import { or } from "drizzle-orm"
 import { MessageTable, PartTable, SessionTable } from "@opencode-ai/core/session/sql"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import { ProviderError } from "@/provider/error"
 import { iife } from "@/util/iife"
 import { errorMessage } from "@/util/error"
@@ -431,7 +432,8 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
         result.push(assistantMessage)
 
         // Inject standalone reasoning as synthetic user message (chronological: user → reasoning → assistant)
-        if (!differentModel && !msgToolNames.size) {
+        // Disable via OPENCODE_DISABLE_PRESERVED_REASONING for chat templates that handle reasoning natively
+        if (!Flag.OPENCODE_DISABLE_PRESERVED_REASONING && !differentModel && !msgToolNames.size) {
           const reasoningPart = msg.parts.find((p) => p.type === "reasoning")
           if (reasoningPart && reasoningPart.text.trim()) {
             const lastUser = result.findLast((m) => m.role === "user")
