@@ -1,7 +1,5 @@
 import type { Provider } from "@/provider/provider"
 
-import PROMPT_ANTHROPIC from "./prompt/anthropic.txt"
-import PROMPT_DEFAULT from "./prompt/default.txt"
 import PROMPT_BEAST from "./prompt/beast.txt"
 import PROMPT_GEMINI from "./prompt/gemini.txt"
 import PROMPT_GPT from "./prompt/gpt.txt"
@@ -21,12 +19,13 @@ export function provider(model: Provider.Model) {
     return [PROMPT_GPT]
   }
   if (model.api.id.includes("gemini-")) return [PROMPT_GEMINI]
-  if (model.api.id.includes("claude")) return [PROMPT_ANTHROPIC]
+  if (model.api.id.includes("claude")) return [PROMPT_DEEPSEEK]
   if (model.api.id.toLowerCase().includes("trinity")) return [PROMPT_TRINITY]
   if (model.api.id.toLowerCase().includes("kimi")) return [PROMPT_KIMI]
   if (model.api.id.toLowerCase().includes("deepseek")) return [PROMPT_DEEPSEEK]
   if (model.providerID.startsWith("llamacpp")) return [PROMPT_DEEPSEEK]
-  return [PROMPT_DEFAULT]
+  if (model.providerID.startsWith("halogen")) return [PROMPT_DEEPSEEK]
+  return [PROMPT_DEEPSEEK]
 }
 
 export * as SystemPrompt from "./system"
